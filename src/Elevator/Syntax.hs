@@ -15,6 +15,8 @@ newtype ElId = ElId Text
 elId :: Text -> ElId
 elId = ElId
 
+-- TODO - add top-level decls
+
 data ElType m
   = TyNat
   | TyUp m m (ElType m)
@@ -31,4 +33,5 @@ data ElTerm m
   | TmLetRet m m ElId (ElTerm m) (ElTerm m)
   | TmLam ElId m (ElType m) (ElTerm m)
   | TmApp (ElTerm m) (ElTerm m)
+  -- TODO - add unary/binary operations, recursion
   deriving stock (Eq, Show)
