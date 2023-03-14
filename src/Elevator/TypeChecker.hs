@@ -1,5 +1,4 @@
-{-# LANGUAGE DerivingVia         #-}
-{-# LANGUAGE ImportQualifiedPost #-}
+{-# LANGUAGE DerivingVia #-}
 module Elevator.TypeChecker where
 
 import Control.Monad        (unless)

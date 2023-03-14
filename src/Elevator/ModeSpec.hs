@@ -15,6 +15,7 @@ module Elevator.ModeSpec
   , (>=!!)
   , (>!!)
   ) where
+
 import Data.Set (Set)
 
 newtype ElModeKey m = ElModeKey (String, m)
