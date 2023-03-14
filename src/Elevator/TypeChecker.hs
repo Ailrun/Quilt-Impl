@@ -14,6 +14,7 @@ type ElTCM a = Either String a
 data ElUsage
   = ElNotUsed
   | ElUsed
+  deriving stock (Eq)
 
 type ElContext m = Map (ElModeKey m) (ElLocalContext m)
 type ElLocalContext m = Map ElId (ElType m, ElUsage)
@@ -26,7 +27,9 @@ typeInferImpl m ctx (TmVar x) = do
   lctx <- maybeToEither "" $ Map.lookup (mskey m) ctx
   (ty, u) <- maybeToEither "" $ Map.lookup x lctx
   u' <- u `usingIn` m
-  pure (ty, Map.insert (mskey m) (Map.insert x (ty, u') lctx) ctx)
+  let
+    ctx' = Map.insert (mskey m) (Map.insert x (ty, u') lctx) ctx
+  pure (ty, ctx')
 typeInferImpl _ ctx (TmNat _) = Right (TyNat, ctx)
 typeInferImpl m ctx (TmLift n l t) = do
   unless (m == n) $ Left ""
@@ -41,16 +44,22 @@ typeInferImpl m ctx (TmUnlift h n t) = do
     TyUp h' n' ty' -> do
       unless (h == h') $ Left ""
       unless (n == n') $ Left ""
-      pure (ty', snd res)
+      pure (ty', snd res) -- should return full context, not dropped context
     _ -> Left ""
--- typeInferImpl m ctx
+typeInferImpl m ctx (TmLam n x ty t) = do
+  unless (m == n) $ Left ""
+  res <- typeInferImpl n _newctx_handle_shadowing t
+  _using_res_add_TyArr_ty
 
 dropContextNotGE :: (ElModeSpec m) => m -> ElContext m -> ElTCM (ElContext m)
 dropContextNotGE m ctx
-  | and $ elStWithWk . msst . elKeyToMode <$> Map.keys (Map.filter (not . Map.null) droppedCtx) = Right ctx'
+  | isWkableCtx droppedCtx = Right ctx'
   | otherwise = Left ""
   where
     (ctx', droppedCtx) = Map.partitionWithKey (const . not . (m <=!!) . elKeyToMode) ctx
+
+isWkableCtx :: (ElModeSpec m) => m -> ElContext m -> Bool
+isWkableCtx = and . Map.mapWithKey (\k lctx -> elStWithWk (msst (elKeyToMode k)) || foldMap ((== ElUsed) . snd) lctx)
 
 usingIn :: (ElModeSpec m) => ElUsage -> m -> ElTCM ElUsage
 usingIn ElNotUsed _     = pure ElUsed
