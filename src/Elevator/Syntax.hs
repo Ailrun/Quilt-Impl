@@ -1,14 +1,19 @@
 {-# LANGUAGE DerivingVia #-}
 module Elevator.Syntax
   ( ElId
+  , elId
   , ElType(..)
   , ElTerm(..)
   ) where
 
+import Data.Text   (Text)
 import GHC.Natural (Natural)
 
-newtype ElId = ElId String
-  deriving (Eq, Ord, Show) via String
+newtype ElId = ElId Text
+  deriving (Eq, Ord, Show) via Text
+
+elId :: Text -> ElId
+elId = ElId
 
 data ElType m
   = TyNat
@@ -24,6 +29,6 @@ data ElTerm m
   | TmUnlift m m (ElTerm m)
   | TmRet m m (ElTerm m)
   | TmLetRet m m ElId (ElTerm m) (ElTerm m)
-  | TmLam m ElId (ElType m) (ElTerm m)
+  | TmLam ElId m (ElType m) (ElTerm m)
   | TmApp (ElTerm m) (ElTerm m)
   deriving stock (Eq, Show)

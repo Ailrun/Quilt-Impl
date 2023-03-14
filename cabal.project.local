@@ -1,0 +1,7 @@
+ignore-project: False
+
+package *
+  ghc-options: -haddock
+
+program-options
+  ghc-options: -haddock

@@ -78,7 +78,7 @@ typeInferImpl m ctx (TmLetRet h n x t t0) = do
       unless (u `isUsedIn` h) $ Left ""
       pure (ty0, rollbackCtxEntry h x ctx' ctx'')
     _ -> Left ""
-typeInferImpl m ctx (TmLam n x argTy t) = do
+typeInferImpl m ctx (TmLam x n argTy t) = do
   unless (m == n) $ Left ""
   (retTy, ctx') <- typeInferImpl n (insertCtxEntry m x (argTy, ElUnused) ctx) t
   (argTy', u) <- maybeToEither "" . lookupCtxEntry m x $ ctx'
