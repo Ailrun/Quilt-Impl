@@ -57,7 +57,6 @@ data ElOp
   deriving (Eq, Show)
 
 class (Eq m) => ElModeSpec m where
-  msinit :: m
   msshow :: m -> String
   msreadMay :: String -> Maybe m
   (<=!!) :: m -> m -> Bool

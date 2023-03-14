@@ -21,8 +21,8 @@ type ElContextEntry m = (ElType m, ElUsage)
 type ElContext m = Map (ElModeKey m) (ElLocalContext m)
 type ElLocalContext m = Map ElId (ElContextEntry m)
 
-typeInfer :: (ElModeSpec m) => ElTerm m -> ElTCM (ElType m)
-typeInfer t = fst <$> typeInferImpl msinit mempty t
+typeInfer :: (ElModeSpec m) => m -> ElTerm m -> ElTCM (ElType m)
+typeInfer m t = fst <$> typeInferImpl m mempty t
 
 typeInferImpl :: (ElModeSpec m) => m -> ElContext m -> ElTerm m -> ElTCM (ElType m, ElContext m)
 typeInferImpl m ctx (TmVar x) = getCompose $
@@ -79,6 +79,7 @@ typeInferImpl m ctx (TmLetRet h n x t t0) = do
       pure (ty0, rollbackCtxEntry h x ctx' ctx'')
     _ -> Left ""
 typeInferImpl m ctx (TmLam x n argTy t) = do
+  -- TODO: add well-modedness check for argTy
   unless (m == n) $ Left ""
   (retTy, ctx') <- typeInferImpl n (insertCtxEntry m x (argTy, ElUnused) ctx) t
   (argTy', u) <- maybeToEither "" . lookupCtxEntry m x $ ctx'
