@@ -3,11 +3,11 @@ module Elevator.ModeSpec
   ( ElModeKey
   , elKeyToMode
 
-  , ElSt(..)
-  , elStWithWk
-  , elStWithCo
+  , ElMdSt(..)
+  , elMdStWithWk
+  , elMdStWithCo
 
-  , ElOp(..)
+  , ElMdOp(..)
 
   , ElModeSpec(..)
   , mskey
@@ -27,41 +27,42 @@ instance Ord (ElModeKey m) where
   compare (ElModeKey (s0, _)) (ElModeKey (s1, _)) = compare s0 s1
 
 instance Show (ElModeKey m) where
-  show (ElModeKey (s, _)) = "<ElMode " <> s <> ">"
+  show (ElModeKey (s, _)) = "<" <> s <> ">"
 
 elKeyToMode :: ElModeKey m -> m
 elKeyToMode (ElModeKey (_, m)) = m
 
-data ElSt
-  = StAll
-  | StWk
-  | StCo
-  | StNone
+data ElMdSt
+  = MdStAll
+  | MdStWk
+  | MdStCo
+  | MdStNone
   deriving (Eq, Show)
 
-elStWithWk :: ElSt -> Bool
-elStWithWk StAll = True
-elStWithWk StWk  = True
-elStWithWk _     = False
+elMdStWithWk :: ElMdSt -> Bool
+elMdStWithWk MdStAll = True
+elMdStWithWk MdStWk  = True
+elMdStWithWk _       = False
 
-elStWithCo :: ElSt -> Bool
-elStWithCo StAll = True
-elStWithCo StCo  = True
-elStWithCo _     = False
+elMdStWithCo :: ElMdSt -> Bool
+elMdStWithCo MdStAll = True
+elMdStWithCo MdStCo  = True
+elMdStWithCo _       = False
 
-data ElOp
-  = OpNat
-  | OpArr
-  | OpUp
-  | OpDown
-  deriving (Eq, Show)
+data ElMdOp
+  = MdOpNat
+  | MdOpBool
+  | MdOpArr
+  | MdOpUp
+  | MdOpDown
+  deriving (Eq, Ord, Show)
 
-class (Eq m) => ElModeSpec m where
+class (Eq m, Show m) => ElModeSpec m where
   msshow :: m -> String
   msreadMay :: String -> Maybe m
   (<=!!) :: m -> m -> Bool
-  msst :: m -> ElSt
-  msop :: m -> Set ElOp
+  msst :: m -> ElMdSt
+  msop :: m -> Set ElMdOp
 
 mskey :: (ElModeSpec m) => m -> ElModeKey m
 mskey m = ElModeKey (msshow m, m)
