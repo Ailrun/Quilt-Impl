@@ -8,6 +8,8 @@ import Data.HashMap.Strict qualified as HashMap
 import Data.List           (foldl')
 import Elevator.ModeSpec
 import Elevator.Syntax
+import Elevator.PrettyPrinter (prettyType, prettyMode)
+import Prettyprinter
 
 data ElUsage
   = ElUnused
@@ -94,7 +96,7 @@ typeInferImpl m ctx (TmUnlift h t) = do
       verifyModeEq h h'
       verifyModeEq m m'
       pure (usage, ty)
-    _ -> Left $ errTypeWrongForm upTy "Up _"
+    _ -> Left $ errTypeWrongForm upTy ("Up " <> show (prettyMode m <+> prettyMode h) <> " _")
 typeInferImpl m ctx (TmRet h t) = do
   verifyModeLt m h
   verifyModeOp MdOpDown m
@@ -111,7 +113,7 @@ typeInferImpl m ctx (TmLetRet h x t t0) = do
       (usage0, ty) <- typeInferImpl m (HashMap.insert x (letTy, h) ctx) t0
       usage0' <- removeVarUsage usage0 x h
       (, ty) <$> mergeUsage usage usage0'
-    _ -> Left $ errTypeWrongForm downLetTy "Down _"
+    _ -> Left $ errTypeWrongForm downLetTy ("Down " <> show (prettyMode h <+> prettyMode m) <> " _")
 typeInferImpl m ctx (TmLam x (Just argTy) t) = do
   verifyModeOp MdOpArr m
   (usage, ty) <- typeInferImpl m (HashMap.insert x (argTy, m) ctx) t
@@ -140,38 +142,34 @@ typeCheckImpl m ctx t ty = do
 
 verifyModeEq :: (ElModeSpec m) => m -> m -> Either String ()
 verifyModeEq m n = unless (m == n) $ Left $ concat
-  [ "Mode mismatch: expected <"
-  , show m
-  , "> but get <"
-  , show n
-  , ">"
+  [ "Mode mismatch: expected "
+  , show (prettyMode m)
+  , " but get "
+  , show (prettyMode n)
   ]
 
 verifyModeGt :: (ElModeSpec m) => m -> m -> Either String ()
 verifyModeGt m n = unless (m >!! n) $ Left $ concat
-  [ "Mode mismatch: expected a mode smaller than <"
-  , show m
-  , "> but get <"
-  , show n
-  , ">"
+  [ "Mode mismatch: expected a mode smaller than "
+  , show (prettyMode m)
+  , " but get "
+  , show (prettyMode n)
   ]
 
 verifyModeLt :: (ElModeSpec m) => m -> m -> Either String ()
 verifyModeLt m n = unless (m <!! n) $ Left $ concat
-  [ "Mode mismatch: expected a mode greater than <"
-  , show m
-  , "> but get <"
-  , show n
-  , ">"
+  [ "Mode mismatch: expected a mode greater than "
+  , show (prettyMode m)
+  , " but get "
+  , show (prettyMode n)
   ]
 
 verifyModeOp :: (ElModeSpec m) => ElMdOp -> m -> Either String ()
 verifyModeOp op m = unless (modeOp m op) $ Left $ concat
   [ "Opeartors related to the symbol ("
   , show op
-  , ") are not allowed in the mode <"
-  , show m
-  , ">"
+  , ") are not allowed in the mode "
+  , show (prettyMode m)
   ]
 
 unifyType :: (ElModeSpec m) => ElType m -> ElType m -> Either String ()
@@ -216,19 +214,17 @@ removeVarUsage ctx x m = do
 errTypeMismatch :: (ElModeSpec m) => ElType m -> ElType m -> String
 errTypeMismatch ty0 ty1 =
   concat
-  [ "Type mismatch: expected ("
-  , show ty0
-  , ") but get ("
-  , show ty1
-  , ")"
+  [ "Type mismatch: expected "
+  , show (prettyType 0 ty0)
+  , " but get "
+  , show (prettyType 0 ty1)
   ]
 
 errTypeWrongForm :: (ElModeSpec m) => ElType m -> String -> String
 errTypeWrongForm ty form =
   concat
-  [ "Type mismatch: expected ("
+  [ "Type mismatch: expected "
   , form
-  , ") but get ("
-  , show ty
-  , ")"
+  , " but get "
+  , show (prettyType 0 ty)
   ]

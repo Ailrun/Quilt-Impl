@@ -28,6 +28,7 @@ library
     Elevator.Syntax
     Elevator.TypeChecker
     Elevator.Evaluator
+    Elevator.PrettyPrinter
 
   -- Modules included in this library but not exported.
   -- other-modules:

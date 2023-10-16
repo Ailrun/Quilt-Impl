@@ -19,19 +19,15 @@ import Text.Megaparsec.Char.Lexer     qualified as MPCL
 type ElParser = Parsec Void Text
 
 fullParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
-fullParse p = first errorBundlePretty . parse ((Left <$> parseTop <|> Right <$> parseTm) <* eof) p
-
-fullParseTerm :: (ElModeSpec m) => FilePath -> Text -> Either String (ElTerm m)
-fullParseTerm p = first errorBundlePretty . parse (parseTm <* eof) p
+fullParse p = first errorBundlePretty . parse ((Left <$> try parseTop <|> Right <$> parseTm) <* eof) p
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTop = do
   x <- parseId
-  symbol "@"
-  m <- parseMode
-  symbol ":"
-  ty <- parseTy
   ps <- fmap (, Nothing) <$> many parseId
+  symbol ":"
+  m <- parseMode
+  ty <- parseTy
   symbol "="
   t <- parseTm
   pure $ ElDef x m ty (foldr (uncurry TmLam) t ps)
@@ -56,8 +52,9 @@ parseLamTm = do
   where
     parseParam :: (ElModeSpec m) => ElParser (ElId, Maybe (ElType m))
     parseParam =
-      between (symbol "(") (symbol ")") $
-        liftA2 (,) parseId (symbol ":" *> (Just <$> parseTy))
+      between (symbol "(") (symbol ")")
+        (liftA2 (,) parseId (symbol ":" *> (Just <$> parseTy)))
+      <|> (, Nothing) <$> parseId
 
 parseNatCaseTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseNatCaseTm = do
@@ -78,9 +75,8 @@ parseLetRetTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLetRetTm = do
   keyword "let"
   keyword "return"
-  x <- parseId
-  symbol "@"
   m <- parseMode
+  x <- parseId
   symbol "="
   t <- parseTm
   keyword "in"
@@ -125,10 +121,7 @@ parseApplikeShiftTm = do
     , keyword "unlift" $> TmUnlift
     , keyword "return" $> TmRet
     ]
-  t <- parseAtomicTm
-  symbol "@"
-  m <- parseMode
-  pure $ f m t
+  liftA2 f parseMode parseAtomicTm
 
 parseApplikeConstTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseApplikeConstTm = do
@@ -159,12 +152,10 @@ parseShiftTy = parseNonAtomicShiftTy <|> parseAtomicTy
   where
     parseNonAtomicShiftTy = do
       shift <- (keyword "Up" $> TyUp) <|> (keyword "Down" $> TyDown)
-      ty <- parseShiftTy
-      symbol "@"
       m <- parseMode
       symbol "=>"
       n <- parseMode
-      pure $ shift m n ty
+      shift m n <$> parseShiftTy
 
 parseAtomicTy :: (ElModeSpec m) => ElParser (ElType m)
 parseAtomicTy =

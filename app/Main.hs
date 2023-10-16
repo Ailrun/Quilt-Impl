@@ -10,6 +10,7 @@ import Elevator.Syntax      (ElProgram (..), ElTop (..))
 import Elevator.TypeChecker (typeCheckProgIncremental, typeInfer)
 import GHC.Generics         (Generic)
 import System.IO            (hFlush, stdout)
+import Elevator.PrettyPrinter (prettyTerm, prettyType)
 
 data TwoMode = MCode | MProg
   deriving (Eq, Show, Generic, Hashable)
@@ -48,10 +49,9 @@ mainLoop prog@(ElProgram tops) n = do
     Right (Right tm) -> do
       case typeInfer prog MProg tm of
         Right ty -> do
-          putStrLn $ "Inferred type : " <> show ty
           case eval prog MProg tm of
             Right r -> do
-              putStrLn $ "Evaluation result : " <> show r
+              putStrLn $ show (prettyTerm 0 r) <> " : " <> show (prettyType 0 ty)
             Left err -> putStrLn $ "Error: " <> err
         Left err -> putStrLn $ "Error: " <> err
       mainLoop prog (n + 1)
