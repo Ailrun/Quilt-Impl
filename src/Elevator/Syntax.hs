@@ -3,23 +3,34 @@ module Elevator.Syntax
   ( ElId
   , elId
 
+  , ElProgram(..)
+
+  , ElTop(..)
+
   , ElType(..)
 
   , ElTerm(..)
   , ElBinOp(..)
   , elBinOpType
+  , elBinOpTypeWithMode
   ) where
 
-import Data.Text   (Text)
-import GHC.Natural (Natural)
+import Data.Hashable (Hashable)
+import Data.Text     (Text)
+import GHC.Natural   (Natural)
 
 newtype ElId = ElId Text
-  deriving (Eq, Ord, Show) via Text
+  deriving (Hashable, Eq, Ord, Show) via Text
 
 elId :: Text -> ElId
 elId = ElId
 
--- TODO - Add top-level decls
+newtype ElProgram m = ElProgram [ElTop m]
+  deriving stock (Eq, Show)
+
+data ElTop m
+  = ElDef ElId m (ElType m) (ElTerm m)
+  deriving stock (Eq, Show)
 
 data ElType m
   = TyNat
@@ -35,12 +46,14 @@ data ElTerm m
   | TmFalse
   | TmIte (ElTerm m) (ElTerm m) (ElTerm m)
   | TmNat Natural
+  | TmSucc (ElTerm m)
+  | TmNatCase (ElTerm m) (ElTerm m) ElId (ElTerm m)
   | TmBinOp ElBinOp (ElTerm m) (ElTerm m)
-  | TmLift m m (ElTerm m)
-  | TmUnlift m m (ElTerm m)
-  | TmRet m m (ElTerm m)
-  | TmLetRet m m ElId (ElTerm m) (ElTerm m)
-  | TmLam ElId m (ElType m) (ElTerm m)
+  | TmLift m (ElTerm m)
+  | TmUnlift m (ElTerm m)
+  | TmRet m (ElTerm m)
+  | TmLetRet m ElId (ElTerm m) (ElTerm m)
+  | TmLam ElId (Maybe (ElType m)) (ElTerm m)
   | TmApp (ElTerm m) (ElTerm m)
   deriving stock (Eq, Show)
 
@@ -70,3 +83,6 @@ elBinOpType OpLe  = (TyNat, TyNat, TyBool)
 elBinOpType OpLt  = (TyNat, TyNat, TyBool)
 elBinOpType OpGe  = (TyNat, TyNat, TyBool)
 elBinOpType OpGt  = (TyNat, TyNat, TyBool)
+
+elBinOpTypeWithMode :: m -> ElBinOp -> (ElType m, ElType m, ElType m)
+elBinOpTypeWithMode _ = elBinOpType

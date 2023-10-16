@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Elevator.Parser where
 
-import Control.Applicative            (liftA3)
+import Control.Applicative            (liftA2)
 import Control.Monad                  (void)
 import Control.Monad.Combinators.Expr qualified as CMCE
 import Data.Bifunctor                 (Bifunctor (first))
@@ -9,7 +9,6 @@ import Data.Functor                   (($>))
 import Data.List                      (foldl1')
 import Data.Text                      (Text)
 import Data.Text                      qualified as T
-import Data.Tuple.Extra               (uncurry3)
 import Data.Void
 import Elevator.ModeSpec
 import Elevator.Syntax
@@ -19,13 +18,29 @@ import Text.Megaparsec.Char.Lexer     qualified as MPCL
 
 type ElParser = Parsec Void Text
 
-fullParse :: (ElModeSpec m) => FilePath -> Text -> Either String (ElTerm m)
-fullParse p = first errorBundlePretty . parse (parseTm <* eof) p
+fullParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
+fullParse p = first errorBundlePretty . parse ((Left <$> parseTop <|> Right <$> parseTm) <* eof) p
+
+fullParseTerm :: (ElModeSpec m) => FilePath -> Text -> Either String (ElTerm m)
+fullParseTerm p = first errorBundlePretty . parse (parseTm <* eof) p
+
+parseTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTop = do
+  x <- parseId
+  symbol "@"
+  m <- parseMode
+  symbol ":"
+  ty <- parseTy
+  ps <- fmap (, Nothing) <$> many parseId
+  symbol "="
+  t <- parseTm
+  pure $ ElDef x m ty (foldr (uncurry TmLam) t ps)
 
 parseTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseTm =
   choice
   [ parseLamTm
+  , parseNatCaseTm
   , parseLetRetTm
   , parseIteTm
   , parseBinOpTm
@@ -37,24 +52,39 @@ parseLamTm = do
   ps <- many parseParam
   symbol "->"
   t <- parseTm
-  pure $ foldr (uncurry3 TmLam) t ps
+  pure $ foldr (uncurry TmLam) t ps
   where
-    parseParam :: (ElModeSpec m) => ElParser (ElId, m, ElType m)
+    parseParam :: (ElModeSpec m) => ElParser (ElId, Maybe (ElType m))
     parseParam =
       between (symbol "(") (symbol ")") $
-        liftA3 (,,) parseId parseMode (symbol ":" *> parseTy)
+        liftA2 (,) parseId (symbol ":" *> (Just <$> parseTy))
+
+parseNatCaseTm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseNatCaseTm = do
+  keyword "case"
+  t <- parseTm
+  keyword "of"
+  symbol "0"
+  symbol "->"
+  tz <- parseTm
+  keyword "succ"
+  x <- parseId
+  symbol "->"
+  ts <- parseTm
+  keyword "end"
+  pure $ TmNatCase t tz x ts
 
 parseLetRetTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLetRetTm = do
   keyword "let"
   keyword "return"
-  m <- parseMode
-  n <- parseMode
   x <- parseId
+  symbol "@"
+  m <- parseMode
   symbol "="
   t <- parseTm
   keyword "in"
-  TmLetRet m n x t <$> parseTm
+  TmLetRet m x t <$> parseTm
 
 parseIteTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseIteTm = do
@@ -86,7 +116,7 @@ parseBinOpTm = CMCE.makeExprParser parseApplikeTm table
       ]
 
 parseApplikeTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseApplikeTm = parseApplikeShiftTm <|> parseAppTm
+parseApplikeTm = parseApplikeShiftTm <|> parseApplikeConstTm <|> parseAppTm
 
 parseApplikeShiftTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseApplikeShiftTm = do
@@ -95,9 +125,15 @@ parseApplikeShiftTm = do
     , keyword "unlift" $> TmUnlift
     , keyword "return" $> TmRet
     ]
+  t <- parseAtomicTm
+  symbol "@"
   m <- parseMode
-  n <- parseMode
-  f m n <$> parseAtomicTm
+  pure $ f m t
+
+parseApplikeConstTm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseApplikeConstTm = do
+  keyword "succ"
+  TmSucc <$> parseAtomicTm
 
 parseAppTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseAppTm = foldl1' TmApp <$> some parseAtomicTm
@@ -123,9 +159,12 @@ parseShiftTy = parseNonAtomicShiftTy <|> parseAtomicTy
   where
     parseNonAtomicShiftTy = do
       shift <- (keyword "Up" $> TyUp) <|> (keyword "Down" $> TyDown)
+      ty <- parseShiftTy
+      symbol "@"
       m <- parseMode
+      symbol "=>"
       n <- parseMode
-      shift m n <$> parseShiftTy
+      pure $ shift m n ty
 
 parseAtomicTy :: (ElModeSpec m) => ElParser (ElType m)
 parseAtomicTy =
@@ -138,9 +177,9 @@ parseAtomicTy =
 parseMode :: (ElModeSpec m) => ElParser m
 parseMode = do
   modeText <- between (symbol "<") (symbol ">") (takeWhile1P (Just "mode") (/= '>'))
-  case msreadMay (T.unpack modeText) of
-    Just m -> pure m
-    _      -> fail "invalid mode text"
+  case readModeEither (T.unpack modeText) of
+    Right m -> pure m
+    Left  e -> fail ("invalid mode: " <> e)
 
 parseId :: ElParser ElId
 parseId = elId <$> identifier
@@ -166,6 +205,10 @@ keywords =
   , "else"
   , "true"
   , "false"
+  , "case"
+  , "of"
+  , "succ"
+  , "end"
   ]
 
 symbol :: Text -> ElParser ()
