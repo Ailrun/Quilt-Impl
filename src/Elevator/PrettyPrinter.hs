@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings   #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Elevator.PrettyPrinter where
 
@@ -6,9 +7,6 @@ import Data.String       (IsString (fromString))
 import Elevator.ModeSpec
 import Elevator.Syntax
 import Prettyprinter
-
-instance Pretty ElId where
-  pretty = viaShow
 
 instance Pretty ElBinOp where
   pretty = prettyBinOp
@@ -59,12 +57,12 @@ prettyTerm p (TmNatCase t tz x ts) =
   [ nest 2
     $ vsep
       [ "case" <+> pretty t <+> "of"
-      , "0 ->" <+> pretty tz
-      , "succ" <+> pretty x <+> "->" <+> pretty ts
+      , "| 0 ->" <+> pretty tz
+      , "| succ" <+> pretty x <+> "->" <+> pretty ts
       ]
   , "end"
   ]
-prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') $ prettyTerm lp t0 <+> pretty bop <+> prettyTerm rp t1
+prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') $ align (prettyTerm lp t0) <+> pretty bop <+> align (prettyTerm rp t1)
   where
     (p', lp, rp) = precedenceBinOp bop
 prettyTerm p (TmLift m t) = parensIf (p > 10) $ "lift" <+> prettyMode m <+> prettyTerm 11 t
@@ -83,6 +81,7 @@ prettyTerm p (TmLetRet m x t t0) =
     ]
 prettyTerm p (TmLam x mayTy t) =
   parensIf (p > 0)
+  . align
   . nest 2
   $ vsep
     [ "fun" <+> prettyParams params <+> "->"
@@ -121,9 +120,9 @@ precedenceBinOp OpSub = (4, 4, 5)
 precedenceBinOp OpMul = (5, 5, 6)
 precedenceBinOp OpDiv = (5, 5, 6)
 precedenceBinOp OpMod = (5, 5, 6)
-precedenceBinOp OpEq = (2, 3, 3)
-precedenceBinOp OpNe = (2, 3, 3)
-precedenceBinOp OpLe = (2, 3, 3)
-precedenceBinOp OpLt = (2, 3, 3)
-precedenceBinOp OpGe = (2, 3, 3)
-precedenceBinOp OpGt = (2, 3, 3)
+precedenceBinOp OpEq  = (2, 3, 3)
+precedenceBinOp OpNe  = (2, 3, 3)
+precedenceBinOp OpLe  = (2, 3, 3)
+precedenceBinOp OpLt  = (2, 3, 3)
+precedenceBinOp OpGe  = (2, 3, 3)
+precedenceBinOp OpGt  = (2, 3, 3)

@@ -10,7 +10,7 @@ import Elevator.Syntax      (ElProgram (..), ElTop (..))
 import Elevator.TypeChecker (typeCheckProgIncremental, typeInfer)
 import GHC.Generics         (Generic)
 import System.IO            (hFlush, stdout)
-import Elevator.PrettyPrinter (prettyTerm, prettyType)
+import Elevator.PrettyPrinter (prettyTerm, prettyType, prettyMode)
 
 data TwoMode = MCode | MProg
   deriving (Eq, Show, Generic, Hashable)
@@ -41,7 +41,7 @@ mainLoop prog@(ElProgram tops) n = do
     Right (Left (top@(ElDef x _ _ _) :: ElTop TwoMode)) ->
       case typeCheckProgIncremental prog top of
         Right () -> do
-          putStrLn $ "Top-level definition\"" <> show x <> "\" is defined"
+          putStrLn $ "Top-level definition " <> show x <> " is defined"
           mainLoop (ElProgram $ tops <> [top]) (n + 1)
         Left err -> do
           putStrLn $ "Error: " <> err
@@ -51,7 +51,7 @@ mainLoop prog@(ElProgram tops) n = do
         Right ty -> do
           case eval prog MProg tm of
             Right r -> do
-              putStrLn $ show (prettyTerm 0 r) <> " : " <> show (prettyType 0 ty)
+              putStrLn $ show (prettyTerm 0 r) <> " : " <> show (prettyMode MProg) <> " " <> show (prettyType 0 ty)
             Left err -> putStrLn $ "Error: " <> err
         Left err -> putStrLn $ "Error: " <> err
       mainLoop prog (n + 1)

@@ -18,9 +18,10 @@ module Elevator.Syntax
 import Data.Hashable (Hashable)
 import Data.Text     (Text)
 import GHC.Natural   (Natural)
+import Prettyprinter (Pretty)
 
 newtype ElId = ElId Text
-  deriving (Hashable, Eq, Ord, Show) via Text
+  deriving (Hashable, Eq, Ord, Show, Pretty) via Text
 
 elId :: Text -> ElId
 elId = ElId

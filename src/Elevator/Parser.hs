@@ -19,13 +19,15 @@ import Text.Megaparsec.Char.Lexer     qualified as MPCL
 type ElParser = Parsec Void Text
 
 fullParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
-fullParse p = first errorBundlePretty . parse ((Left <$> try parseTop <|> Right <$> parseTm) <* eof) p
+fullParse p = first errorBundlePretty . parse ((Left <$> parseTop <|> Right <$> parseTm) <* eof) p
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTop = do
-  x <- parseId
-  ps <- fmap (, Nothing) <$> many parseId
-  symbol ":"
+  (x, ps) <- try $ do
+    x <- parseId
+    ps <- fmap (, Nothing) <$> many parseId
+    symbol ":"
+    pure (x, ps)
   m <- parseMode
   ty <- parseTy
   symbol "="
@@ -61,9 +63,11 @@ parseNatCaseTm = do
   keyword "case"
   t <- parseTm
   keyword "of"
+  symbol "|"
   symbol "0"
   symbol "->"
   tz <- parseTm
+  symbol "|"
   keyword "succ"
   x <- parseId
   symbol "->"

@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Elevator.TypeChecker where
 
 import Control.Monad       (unless, void, when)
@@ -45,7 +46,7 @@ typeInferImpl m ctx (TmVar x) =
     Just (ty, m') -> do
       verifyModeEq m m'
       pure (HashMap.singleton x (ty, m), ty)
-    Nothing       -> Left $ "Variable \"" <> show x <> "\" is not in scope"
+    Nothing       -> Left $ "Variable " <> show x <> " is not in scope"
 typeInferImpl m _ TmTrue = do
   verifyModeOp MdOpBool m
   pure (HashMap.empty, TyBool)
@@ -96,7 +97,7 @@ typeInferImpl m ctx (TmUnlift h t) = do
       verifyModeEq h h'
       verifyModeEq m m'
       pure (usage, ty)
-    _ -> Left $ errTypeWrongForm upTy ("Up " <> show (prettyMode m <+> prettyMode h) <> " _")
+    _ -> Left $ errTypeWrongForm upTy ("Up " <> show (prettyMode m <+> "=>" <+> prettyMode h) <> " _")
 typeInferImpl m ctx (TmRet h t) = do
   verifyModeLt m h
   verifyModeOp MdOpDown m
@@ -113,13 +114,13 @@ typeInferImpl m ctx (TmLetRet h x t t0) = do
       (usage0, ty) <- typeInferImpl m (HashMap.insert x (letTy, h) ctx) t0
       usage0' <- removeVarUsage usage0 x h
       (, ty) <$> mergeUsage usage usage0'
-    _ -> Left $ errTypeWrongForm downLetTy ("Down " <> show (prettyMode h <+> prettyMode m) <> " _")
+    _ -> Left $ errTypeWrongForm downLetTy ("Down " <> show (prettyMode h <+> "=>" <+> prettyMode m) <> " _")
 typeInferImpl m ctx (TmLam x (Just argTy) t) = do
   verifyModeOp MdOpArr m
   (usage, ty) <- typeInferImpl m (HashMap.insert x (argTy, m) ctx) t
   (, TyArr argTy ty) <$> removeVarUsage usage x m
 typeInferImpl _ _ (TmLam x Nothing _) =
-  Left $ "variable \"" <> show x <> "\" should have a type annotation"
+  Left $ "variable " <> show x <> " should have a type annotation"
 typeInferImpl m ctx (TmApp t0 t1) = do
   verifyModeOp MdOpArr m
   (usage0, funTy) <- typeInferImpl m ctx t0
@@ -208,7 +209,7 @@ mergeUsage ctx0 ctx1 = do
 removeVarUsage :: (ElModeSpec m) => ElContext m -> ElId -> m -> Either String (ElContext m)
 removeVarUsage ctx x m = do
   unless (modeSt m MdStWk || HashMap.member x ctx) $
-    Left $ "Variable \"" <> show x <> "\" is not used but its mode requires an usage"
+    Left $ "Variable " <> show x <> " is not used but its mode requires an usage"
   pure $ HashMap.delete x ctx
 
 errTypeMismatch :: (ElModeSpec m) => ElType m -> ElType m -> String

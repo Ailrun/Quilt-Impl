@@ -9,6 +9,7 @@ import GHC.Natural (Natural)
 import Control.Applicative (liftA3, Applicative (liftA2))
 
 newtype ElEnv m = ElEnv (HashMap ElId (Either m (ElEnv m, ElTerm m, m)))
+  deriving Show
 
 eval :: (ElModeSpec m) => ElProgram m -> m -> ElTerm m -> Either String (ElTerm m)
 eval (ElProgram tops) = evalImpl . ElEnv $ foldl' helper HashMap.empty tops
@@ -22,7 +23,7 @@ evalImpl (ElEnv envMap) m (TmVar x) =
         | m == m'   -> pure $ TmVar x
       Just (Right (env', t, m'))
         | m == m'   -> evalImpl env' m t
-      Just _        -> Left $ "Variable \"" <> show x <> "\"" <> " is not in mode \"" <> show m <> "\""
+      Just a        -> Left $ "Variable \"" <> show x <> "\"" <> " is not in mode <" <> show m <> "> " <> show a
       Nothing       -> Left $ "Variable \"" <> show x <> "\"" <> " has no reference"
 evalImpl _ _ TmTrue = pure TmTrue
 evalImpl _ _ TmFalse = pure TmFalse
@@ -63,7 +64,7 @@ evalImpl env m (TmUnlift h t) = do
     _             -> Left $ "Non deferred expression result \"" <> show r <> "\" for unlift"
 evalImpl env _ (TmRet h t) = TmRet h <$> evalImpl env h t
 evalImpl env m (TmLetRet h x t t0) = do
-  r <- evalImpl env h t
+  r <- evalImpl env m t
   case r of
     TmRet h' t'
       | h == h'   -> evalImpl (envInsert x h t' env) m t0
