@@ -44,7 +44,7 @@ mainLoop prog@(ElProgram tops) n = do
           putStrLn $ "Top-level definition " <> show x <> " is defined"
           mainLoop (ElProgram $ tops <> [top]) (n + 1)
         Left err -> do
-          putStrLn $ "Error: " <> err
+          putStrLn $ "Error " <> "<line " <> show n <> " : " <> err
           mainLoop prog (n + 1)
     Right (Right tm) -> do
       case typeInfer prog MProg tm of
@@ -52,11 +52,11 @@ mainLoop prog@(ElProgram tops) n = do
           case eval prog MProg tm of
             Right r -> do
               putStrLn $ show (prettyTerm 0 r) <> " : " <> show (prettyMode MProg) <> " " <> show (prettyType 0 ty)
-            Left err -> putStrLn $ "Error: " <> err
-        Left err -> putStrLn $ "Error: " <> err
+            Left err -> putStrLn $ "Error " <> "<line " <> show n <> " : " <> err
+        Left err -> putStrLn $ "Error " <> "<line " <> show n <> " : " <> err
       mainLoop prog (n + 1)
     Left err -> do
-      putStrLn $ "Error: " <> err
+      putStrLn $ "Error " <> "<line " <> show n <> " : " <> err
       mainLoop prog (n + 1)
 
 main :: IO ()
