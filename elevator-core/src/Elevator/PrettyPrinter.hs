@@ -3,10 +3,20 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Elevator.PrettyPrinter where
 
-import Data.String       (IsString (fromString))
+import Data.String                 (IsString (fromString))
 import Elevator.ModeSpec
 import Elevator.Syntax
 import Prettyprinter
+import Prettyprinter.Render.String (renderString)
+
+showDoc :: Int -> Doc () -> String
+showDoc n = renderString . layoutSmart (defaultLayoutOptions { layoutPageWidth = AvailablePerLine n 1})
+
+showPretty :: (Pretty a) => Int -> a -> String
+showPretty n = showDoc n . pretty
+
+showPrettyIndent :: (Pretty a) => Int -> Int -> a -> String
+showPrettyIndent n m = showDoc n . indent m . pretty
 
 instance Pretty ElBinOp where
   pretty = prettyBinOp
@@ -62,19 +72,19 @@ prettyTerm p (TmNatCase t tz x ts) =
       ]
   , "end"
   ]
-prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') $ align (prettyTerm lp t0) <+> pretty bop <+> align (prettyTerm rp t1)
+prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . hang 2 $ align (prettyTerm lp t0) <+> pretty bop <+> align (prettyTerm rp t1)
   where
     (p', lp, rp) = precedenceBinOp bop
-prettyTerm p (TmLift m t) = parensIf (p > 10) $ "lift" <+> prettyMode m <+> prettyTerm 11 t
-prettyTerm p (TmUnlift m t) = parensIf (p > 10) $ "unlift" <+> prettyMode m <+> prettyTerm 11 t
-prettyTerm p (TmRet m t) = parensIf (p > 10) $ "return" <+> prettyMode m <+> prettyTerm 11 t
+prettyTerm p (TmLift m t) = parensIf (p > 10) . hang 2 $ "lift" <+> maybe mempty prettyMode m <> softline <> group (prettyTerm 11 t)
+prettyTerm p (TmUnlift m t) = parensIf (p > 10) . hang 2 $ "unlift" <+> prettyMode m <> softline <> group (prettyTerm 11 t)
+prettyTerm p (TmRet m t) = parensIf (p > 10) . hang 2 $ "return" <+> maybe mempty prettyMode m <> softline <> group (prettyTerm 11 t)
 prettyTerm p (TmLetRet m x t t0) =
   parensIf (p > 0)
   . align
   $ vsep
     [ nest 2
-      $ vsep
-        [ "let return" <+> prettyMode m <+> pretty x <+> "="
+      $ fillSep
+        [ "let return" <+> maybe mempty ((<> space) . prettyMode) m <> pretty x <+> "="
         , pretty t
         ]
     , "in" <+> pretty t0
@@ -83,9 +93,9 @@ prettyTerm p (TmLam x mayTy t) =
   parensIf (p > 0)
   . align
   . nest 2
-  $ vsep
+  $ fillSep
     [ "fun" <+> prettyParams params <+> "->"
-    , pretty t
+    , group $ pretty t
     ]
   where
     params = (x, mayTy) : getParams t
@@ -95,10 +105,20 @@ prettyTerm p (TmLam x mayTy t) =
 prettyTerm p (TmApp t0 t1) =
   parensIf (p > 10)
   . nest 2
-  $ vsep
+  $ fillSep
     [ prettyTerm 10 t0
     , prettyTerm 11 t1
     ]
+prettyTerm p (TmAnn t ty) =
+  parensIf (p > 0)
+  . nest 2
+  $ fillSep
+    [ prettyTerm 1 t
+    , colon <+> prettyType 0 ty
+    ]
+
+instance (ElModeSpec m) => Pretty (ElITerm m) where
+  pretty = prettyTerm 0 . iTerm2term
 
 parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True  d = parens d

@@ -18,8 +18,11 @@ import Text.Megaparsec.Char.Lexer     qualified as MPCL
 
 type ElParser = Parsec Void Text
 
-fullParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
-fullParse p = first errorBundlePretty . parse ((Left <$> parseTop <|> Right <$> parseTm) <* eof) p
+fullFileParse :: (ElModeSpec m) => FilePath -> Text -> Either String (ElProgram m)
+fullFileParse p = first errorBundlePretty . parse (MPC.space >> ElProgram <$> many parseTop <* eof) p
+
+fullCommandParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
+fullCommandParse p = first errorBundlePretty . parse (MPC.space >> (Left <$> parseTop <|> Right <$> parseTm) <* eof) p
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTop = do
@@ -32,17 +35,22 @@ parseTop = do
   ty <- parseTy
   symbol "="
   t <- parseTm
+  symbol ";;"
   pure $ ElDef x m ty (foldr (uncurry TmLam) t ps)
 
 parseTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseTm =
-  choice
-  [ parseLamTm
-  , parseNatCaseTm
-  , parseLetRetTm
-  , parseIteTm
-  , parseBinOpTm
-  ]
+parseTm = do
+  t <- choice
+       [ parseLamTm
+       , parseNatCaseTm
+       , parseLetRetTm
+       , parseIteTm
+       , parseBinOpTm
+       ]
+  f <- option id $ do
+    symbol ":"
+    flip TmAnn <$> parseTy
+  pure $ f t
 
 parseLamTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLamTm = do
@@ -79,7 +87,7 @@ parseLetRetTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLetRetTm = do
   keyword "let"
   keyword "return"
-  m <- parseMode
+  m <- optional parseMode
   x <- parseId
   symbol "="
   t <- parseTm
@@ -121,11 +129,11 @@ parseApplikeTm = parseApplikeShiftTm <|> parseApplikeConstTm <|> parseAppTm
 parseApplikeShiftTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseApplikeShiftTm = do
   f <- choice
-    [ keyword "lift" $> TmLift
-    , keyword "unlift" $> TmUnlift
-    , keyword "return" $> TmRet
+    [ keyword "lift" >> TmLift <$> optional parseMode
+    , keyword "unlift" >> TmUnlift <$> parseMode
+    , keyword "return" >> TmRet <$> optional parseMode
     ]
-  liftA2 f parseMode parseAtomicTm
+  f <$> parseAtomicTm
 
 parseApplikeConstTm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseApplikeConstTm = do

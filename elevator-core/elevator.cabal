@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               adjoint-meta-impl
+name:               elevator-core
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -36,6 +36,7 @@ library
   build-depends:
     , array                       ^>=0.5.4.0
     , base                        ^>=4.16.4.0
+    , base-compat                 ^>=0.13.1
     , bytestring                  ^>=0.12.0.2
     , containers                  ^>=0.6.8
     , directory                   ^>=1.3.6.2
@@ -60,16 +61,17 @@ library
 
   ghc-options:      -Wall
 
-executable adjoint-two-mode
+executable elevator-core-box
   main-is:          Main.hs
 
   -- Modules included in this executable, other than Main.
   -- other-modules:
 
   build-depends:
-    , adjoint-meta-impl
     , base               ^>=4.16.4.0
     , containers         ^>=0.6.8
+    , elevator-core
+    , extra              ^>=1.7.12
     , hashable           ^>=1.4.3.0
     , megaparsec         ^>=9.5
     , text               ^>=2.1
