@@ -1,0 +1,7 @@
+pow n : Nat -> Box (Nat -> Nat) =
+  case n of
+  | 0 -> box (fun (x : Nat) -> 1)
+  | succ n ->
+    let box P = pow n in
+    box (fun (x : Nat) -> P x * x)
+  end;;
