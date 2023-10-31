@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module ElevatorExt.LambdaBox.Parser where
+module ElevatorExt.Linear.Parser where
 
 import           Control.Applicative            (liftA2)
 import           Control.Monad                  (void)
@@ -11,7 +11,7 @@ import           Data.Text                      (Text)
 import qualified Data.Text                      as T
 import           Data.Void
 import           Elevator.Syntax                (ElBinOp (..), ElId, elId)
-import           ElevatorExt.LambdaBox.Syntax
+import           ElevatorExt.Linear.Syntax
 import           Text.Megaparsec
 import qualified Text.Megaparsec.Char           as MPC
 import qualified Text.Megaparsec.Char.Lexer     as MPCL

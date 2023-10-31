@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
-module ElevatorExt.LambdaBox.ModeSpec where
+module ElevatorExt.Linear.ModeSpec where
 
 import           Data.Hashable     (Hashable)
 import           Elevator.ModeSpec (ElModeSpec (..))

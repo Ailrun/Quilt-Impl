@@ -1,5 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
-module ElevatorExt.LambdaBox.Syntax where
+module ElevatorExt.Linear.Syntax where
 
 import           Elevator.Syntax
 import           GHC.Natural     (Natural)

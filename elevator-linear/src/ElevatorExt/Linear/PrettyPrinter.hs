@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module ElevatorExt.LambdaBox.PrettyPrinter where
+module ElevatorExt.Linear.PrettyPrinter where
 
 import           Elevator.PrettyPrinter       (precedenceBinOp)
 import           Elevator.Syntax              (ElId)
-import           ElevatorExt.LambdaBox.Syntax
+import           ElevatorExt.Linear.Syntax
 import           Prettyprinter
 
 instance Pretty ElxType where

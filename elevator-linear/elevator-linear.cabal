@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               elevator-lambda-box
+name:               elevator-linear
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -23,11 +23,11 @@ extra-source-files: CHANGELOG.md
 
 library
   exposed-modules:
-    ElevatorExt.LambdaBox.Syntax
-    ElevatorExt.LambdaBox.ModeSpec
-    ElevatorExt.LambdaBox.Parser
-    ElevatorExt.LambdaBox.Compile
-    ElevatorExt.LambdaBox.PrettyPrinter
+    ElevatorExt.Linear.Syntax
+    ElevatorExt.Linear.ModeSpec
+    ElevatorExt.Linear.Parser
+    ElevatorExt.Linear.Compile
+    ElevatorExt.Linear.PrettyPrinter
 
   -- Modules included in this library but not exported.
   -- other-modules:
@@ -61,7 +61,7 @@ library
 
   ghc-options:      -Wall
 
-executable elevator-lambda-box
+executable elevator-linear
   main-is:          Main.hs
 
   -- Modules included in this executable, other than Main.
@@ -71,7 +71,7 @@ executable elevator-lambda-box
     , base                ^>=4.16.4.0
     , containers          ^>=0.6.8
     , elevator-core       ^>=0.1.0.0
-    , elevator-lambda-box
+    , elevator-linear
     , extra               ^>=1.7.12
     , hashable            ^>=1.4.3.0
     , megaparsec          ^>=9.5
