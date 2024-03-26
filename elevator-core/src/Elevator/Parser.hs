@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Elevator.Parser where
 
-import Control.Applicative            (liftA2)
+import Control.Applicative            (liftA2, liftA3)
 import Control.Monad                  (void)
 import Control.Monad.Combinators.Expr qualified as CMCE
 import Data.Bifunctor                 (Bifunctor (first))
@@ -13,8 +13,11 @@ import Data.Void
 import Elevator.ModeSpec
 import Elevator.Syntax
 import Text.Megaparsec
+import Control.Monad.Combinators.NonEmpty qualified as CMCNE
 import Text.Megaparsec.Char           qualified as MPC
 import Text.Megaparsec.Char.Lexer     qualified as MPCL
+import qualified Data.List.NonEmpty as NE
+import Control.Monad.RWS (MonadTrans(lift))
 
 type ElParser = Parsec Void Text
 
@@ -22,160 +25,189 @@ fullFileParse :: (ElModeSpec m) => FilePath -> Text -> Either String (ElProgram 
 fullFileParse p = first errorBundlePretty . parse (MPC.space >> ElProgram <$> many parseTop <* eof) p
 
 fullCommandParse :: (ElModeSpec m) => FilePath -> Text -> Either String (Either (ElTop m) (ElTerm m))
-fullCommandParse p = first errorBundlePretty . parse (MPC.space >> (Left <$> parseTop <|> Right <$> parseTm) <* eof) p
+fullCommandParse p = first errorBundlePretty . parse (MPC.space >> (Left <$> parseTop <|> Right <$> parseTerm) <* eof) p
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
-parseTop = do
-  (x, ps) <- try $ do
-    x <- parseId
-    ps <- fmap (, Nothing) <$> many parseId
-    symbol ":"
-    pure (x, ps)
-  m <- parseMode
-  ty <- parseTy
+parseTop = parseTmDefTop
+
+parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTmDefTop = do
+  (x, ps, m) <- try $ do
+    x <- parseLowerId
+    ps <- many parseLowerId
+    m <- parseMode
+    symbol ":" $> (x, ps, m)
+  ty <- parseType
   symbol "="
-  t <- parseTm
+  t <- parseTerm
   symbol ";;"
-  pure $ ElDef x m ty (foldr (uncurry TmLam) t ps)
+  pure . ElTmDef x m ty $ foldr (`TmLam` Nothing) t ps
 
-parseTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseTm = do
-  t <- choice
-       [ parseLamTm
-       , parseNatCaseTm
-       , parseLetRetTm
-       , parseIteTm
-       , parseBinOpTm
-       ]
-  f <- option id $ do
-    symbol ":"
-    flip TmAnn <$> parseTy
-  pure $ f t
+parseTyDefTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTyDefTop =
+  liftA3
+    (liftA2 ElTyDef NE.init NE.last)
+    (keyword "type" *> CMCNE.some parseLowerId)
+    parseMode
+    (symbol "=" *> option [] (optional (symbol "|") *> sepBy1 parseTyDefCons (symbol "|")))
 
-parseLamTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseLamTm = do
-  keyword "fun"
-  ps <- many parseParam
-  symbol "->"
-  t <- parseTm
-  pure $ foldr (uncurry TmLam) t ps
-  where
-    parseParam :: (ElModeSpec m) => ElParser (ElId, Maybe (ElType m))
-    parseParam =
-      between (symbol "(") (symbol ")")
-        (liftA2 (,) parseId (symbol ":" *> (Just <$> parseTy)))
-      <|> (, Nothing) <$> parseId
+parseTyDefCons :: (ElModeSpec m) => ElParser (ElId, [ElType m])
+parseTyDefCons =
+  liftA2
+    (,)
+    parseUpperId
+    (keyword "of" *> sepBy parseType (symbol "*"))
 
-parseNatCaseTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseNatCaseTm = do
-  keyword "case"
-  t <- parseTm
-  keyword "of"
-  symbol "|"
-  symbol "0"
-  symbol "->"
-  tz <- parseTm
-  symbol "|"
-  keyword "succ"
-  x <- parseId
-  symbol "->"
-  ts <- parseTm
-  keyword "end"
-  pure $ TmNatCase t tz x ts
+parseTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseTerm = undefined
+-- parseTerm = do
+--   t <- choice
+--        [ parseLamTerm
+--        , parseMatchTm
+--        , parseLoadTerm
+--        , parseIteTerm
+--        , parseBinOpTerm
+--        ]
+--   f <- option id $ do
+--     symbol ":"
+--     flip TmAnn <$> parseTy
+--   pure $ f t
 
-parseLetRetTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseLetRetTm = do
-  keyword "let"
-  keyword "return"
-  m <- optional parseMode
-  x <- parseId
-  symbol "="
-  t <- parseTm
-  keyword "in"
-  TmLetRet m x t <$> parseTm
+-- parseLamTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseLamTerm = do
+--   keyword "fun"
+--   ps <- many parseParam
+--   symbol "->"
+--   t <- parseTerm
+--   pure $ foldr (uncurry TmLam) t ps
+--   where
+--     parseParam :: (ElModeSpec m) => ElParser (ElId, Maybe (ElType m))
+--     parseParam =
+--       between (symbol "(") (symbol ")")
+--         (liftA2 (,) parseLowerId (symbol ":" *> (Just <$> parseTy)))
+--       <|> (, Nothing) <$> parseLowerId
 
-parseIteTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseIteTm = do
-  keyword "if"
-  t <- parseTm
-  keyword "then"
-  t0 <- parseTm
-  keyword "else"
-  TmIte t t0 <$> parseTm
+-- parseMatchTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseMatchTerm = undefined
 
-parseBinOpTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseBinOpTm = CMCE.makeExprParser parseApplikeTm table
-  where
-    table =
-      [ [ CMCE.InfixL $ symbol "*" $> TmBinOp OpMul
-        , CMCE.InfixL $ symbol "/" $> TmBinOp OpDiv
-        , CMCE.InfixL $ symbol "%" $> TmBinOp OpMod
-        ]
-      , [ CMCE.InfixL $ symbol "+" $> TmBinOp OpAdd
-        , CMCE.InfixL $ symbol "-" $> TmBinOp OpSub
-        ]
-      , [ CMCE.InfixN $ symbol "==" $> TmBinOp OpEq
-        , CMCE.InfixN $ symbol "/=" $> TmBinOp OpNe
-        , CMCE.InfixN $ symbol "<=" $> TmBinOp OpLe
-        , CMCE.InfixN $ symbol "<" $> TmBinOp OpLt
-        , CMCE.InfixN $ symbol ">=" $> TmBinOp OpGe
-        , CMCE.InfixN $ symbol ">" $> TmBinOp OpGt
-        ]
-      ]
+-- parseloadterm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseLoadTerm = do
+--   keyword "let"
+--   keyword "return"
+--   m <- optional parseMode
+--   x <- parseLowerId
+--   symbol "="
+--   t <- parseTerm
+--   keyword "in"
+--   TmLetRet m x t <$> parseTerm
 
-parseApplikeTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseApplikeTm = parseApplikeShiftTm <|> parseApplikeConstTm <|> parseAppTm
+-- parseIteTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseIteTerm = do
+--   keyword "if"
+--   t <- parseTerm
+--   keyword "then"
+--   t0 <- parseTerm
+--   keyword "else"
+--   TmIte t t0 <$> parseTm
 
-parseApplikeShiftTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseApplikeShiftTm = do
-  f <- choice
-    [ keyword "lift" >> TmLift <$> optional parseMode
-    , keyword "unlift" >> TmUnlift <$> parseMode
-    , keyword "return" >> TmRet <$> optional parseMode
-    ]
-  f <$> parseAtomicTm
+-- parseBinOpTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseBinOpTerm = CMCE.makeExprParser parseApplikeTerm table
+--   where
+--     table =
+--       [ [ CMCE.InfixL $ symbol "*" $> TmBinOp OpMul
+--         , CMCE.InfixL $ symbol "/" $> TmBinOp OpDiv
+--         , CMCE.InfixL $ symbol "%" $> TmBinOp OpMod
+--         ]
+--       , [ CMCE.InfixL $ symbol "+" $> TmBinOp OpAdd
+--         , CMCE.InfixL $ symbol "-" $> TmBinOp OpSub
+--         ]
+--       , [ CMCE.InfixN $ symbol "==" $> TmBinOp OpEq
+--         , CMCE.InfixN $ symbol "/=" $> TmBinOp OpNe
+--         , CMCE.InfixN $ symbol "<=" $> TmBinOp OpLe
+--         , CMCE.InfixN $ symbol "<" $> TmBinOp OpLt
+--         , CMCE.InfixN $ symbol ">=" $> TmBinOp OpGe
+--         , CMCE.InfixN $ symbol ">" $> TmBinOp OpGt
+--         ]
+--       ]
 
-parseApplikeConstTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseApplikeConstTm = do
-  keyword "succ"
-  TmSucc <$> parseAtomicTm
+-- parseApplikeTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseApplikeTerm = parseApplikeShiftTerm <|> parseApplikeConstTerm <|> parseAppTerm
 
-parseAppTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseAppTm = foldl1' TmApp <$> some parseAtomicTm
+-- parseApplikeShiftTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseApplikeShiftTerm = do
+--   f <- choice
+--     [ keyword "lift" >> TmLift <$> optional parseMode
+--     , keyword "unlift" >> TmUnlift <$> parseMode
+--     , keyword "return" >> TmRet <$> optional parseMode
+--     ]
+--   f <$> parseAtomicTerm
 
-parseAtomicTm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseAtomicTm =
+-- parseApplikeConstTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseApplikeConstTerm = do
+--   keyword "succ"
+--   TmSucc <$> parseAtomicTerm
+
+-- parseAppTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseAppTerm = foldl1' TmApp <$> some parseAtomicTerm
+
+-- parseAtomicTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+-- parseAtomicTerm =
+--   choice
+--     [ TmNat <$> lexeme MPCL.decimal
+--     , keyword "true" $> TmTrue
+--     , keyword "false" $> TmFalse
+--     , TmVar <$> parseLowerId
+--     , parened parseTm
+--     ]
+
+parseKind :: (ElModeSpec m) => ElParser (ElKind m)
+parseKind =
+  liftA2
+    (foldr (`KiUp` []))
+    parseAtomicKind
+    (many (keyword "Up" *> parseMode))
+
+parseAtomicKind :: (ElModeSpec m) => ElParser (ElKind m)
+parseAtomicKind =
   choice
-    [ TmNat <$> lexeme MPCL.decimal
-    , keyword "true" $> TmTrue
-    , keyword "false" $> TmFalse
-    , TmVar <$> parseId
-    , between (symbol "(") (symbol ")") parseTm
+    [ keyword "Type" $> KiType <*> parseMode
+    , bracketed parseContextualKind <*> parseMode
+    , parened parseKind
     ]
 
-parseTy :: (ElModeSpec m) => ElParser (ElType m)
-parseTy = parseArrTy
+parseContextualKind :: (ElModeSpec m) => ElParser (m -> ElKind m)
+parseContextualKind = do
+  ctx <- parseContext
+  keyword "Up"
+  (\ki m -> KiUp m ctx ki)<$> parseKind
 
-parseArrTy :: (ElModeSpec m) => ElParser (ElType m)
-parseArrTy = foldr1 TyArr <$> sepBy1 parseShiftTy (symbol "->")
+parseContext :: (ElModeSpec m) => ElParser (ElContext m)
+parseContext = undefined
 
-parseShiftTy :: (ElModeSpec m) => ElParser (ElType m)
-parseShiftTy = parseNonAtomicShiftTy <|> parseAtomicTy
-  where
-    parseNonAtomicShiftTy = do
-      shift <- (keyword "Up" $> TyUp) <|> (keyword "Down" $> TyDown)
-      m <- parseMode
-      symbol "=>"
-      n <- parseMode
-      shift m n <$> parseShiftTy
+parseType :: (ElModeSpec m) => ElParser (ElType m)
+parseType = undefined
+-- parseType = parseArrType
 
-parseAtomicTy :: (ElModeSpec m) => ElParser (ElType m)
-parseAtomicTy =
-  choice
-    [ keyword "Nat" $> TyNat
-    , keyword "Bool" $> TyBool
-    , between (symbol "(") (symbol ")") parseTy
-    ]
+-- parseArrType :: (ElModeSpec m) => ElParser (ElType m)
+-- parseArrType = foldr1 TyArr <$> sepBy1 parseShiftTy (symbol "->")
+
+-- parseShiftType :: (ElModeSpec m) => ElParser (ElType m)
+-- parseShiftType = parseNonAtomicShiftTy <|> parseAtomicTy
+--   where
+--     parseNonAtomicShiftTy = do
+--       shift <- (keyword "Up" $> TyUp) <|> (keyword "Down" $> TyDown)
+--       m <- parseMode
+--       symbol "=>"
+--       n <- parseMode
+--       shift m n <$> parseShiftType
+
+-- parseAtomicType :: (ElModeSpec m) => ElParser (ElType m)
+-- parseAtomicType =
+--   choice
+--     [ keyword "Int" $> TyInt
+--     , keyword "Bool" $> TyBool
+--     , between (symbol "(") (symbol ")") parseType
+--     ]
 
 parseMode :: (ElModeSpec m) => ElParser m
 parseMode = do
@@ -184,8 +216,11 @@ parseMode = do
     Right m -> pure m
     Left  e -> fail ("invalid mode: " <> e)
 
-parseId :: ElParser ElId
-parseId = elId <$> identifier
+parseLowerId :: ElParser ElId
+parseLowerId = elId <$> lowerIdentifier
+
+parseUpperId :: ElParser ElId
+parseUpperId = elId <$> upperIdentifier
 
 ------------------------------------------------------------
 -- lexer-like combinators
@@ -195,24 +230,31 @@ keywords :: [Text]
 keywords =
   [ "Up"
   , "Down"
-  , "Nat"
+  , "Int"
   , "Bool"
-  , "let"
-  , "return"
+  , "store"
+  , "load"
   , "in"
-  , "lift"
-  , "unlift"
+  , "thunk"
+  , "force"
   , "fun"
   , "if"
   , "then"
   , "else"
   , "true"
   , "false"
-  , "case"
-  , "of"
-  , "succ"
+  , "match"
+  , "with"
   , "end"
+  , "type"
+  , "of"
   ]
+
+parened :: ElParser a -> ElParser a
+parened = between (symbol "(") (symbol ")")
+
+bracketed :: ElParser a -> ElParser a
+bracketed = between (symbol "[") (symbol "]")
 
 symbol :: Text -> ElParser ()
 symbol txt = void (lexeme (MPC.string txt)) <?> ("symbol " <> show txt)
@@ -222,15 +264,18 @@ keyword txt
   | txt `elem` keywords = lexeme (MPC.string txt *> notFollowedBy restIdChar) <?> ("keyword " <> show txt)
   | otherwise           = error $ "Parser bug: unknown keyword " <> show txt
 
-identifier :: ElParser Text
-identifier = identifierImpl <?> "identifier"
+lowerIdentifier :: ElParser Text
+lowerIdentifier = identifierOf MPC.lowerChar <?> "identifier starting with a lower-case letter"
+
+upperIdentifier :: ElParser Text
+upperIdentifier = identifierOf MPC.upperChar <?> "identifier starting with an upper-case letter"
+
+identifierOf :: ElParser Char -> ElParser Text
+identifierOf firstChar = identifierImpl
   where
     identifierImpl :: ElParser Text
     identifierImpl = try . withCondition (`notElem` keywords) ((<> "") . show) $
-      lexeme ((T.pack .). (:) <$> firstIdChar <*> many restIdChar)
-
-firstIdChar :: ElParser Char
-firstIdChar = MPC.letterChar
+      lexeme ((T.pack .). (:) <$> firstChar <*> many restIdChar)
 
 restIdChar :: ElParser Char
 restIdChar = MPC.alphaNumChar <|> oneOf ("_'" :: String)

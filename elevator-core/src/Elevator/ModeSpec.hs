@@ -17,7 +17,7 @@ data ElMdSt
   deriving (Eq, Show)
 
 data ElMdOp
-  = MdOpNat
+  = MdOpInt
   | MdOpBool
   | MdOpArr
   | MdOpUp
