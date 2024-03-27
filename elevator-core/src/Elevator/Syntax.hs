@@ -4,31 +4,39 @@ module Elevator.Syntax
   ( ElId
   , elId
 
-  , ElKind(..)
-  , ElIKind(..)
-  , ElType(..)
-  , ElIType(..)
-  , ElContextEntry
-  , ElIContextEntry
-  , ElContext
-  , ElIContext
-  , ElContextHat
-  , ElIContextHat
-
   , ElProgram(..)
   , ElIProgram(..)
 
   , ElTop(..)
   , ElITop(..)
 
+  , ElKind(..)
+  , ElIKind(..)
+  , ElType(..)
+  , ElIType(..)
+
+  , ElContextEntry(..)
+  , ElIContextEntry(..)
+  , ElContext
+  , ElIContext
+  , ElContextHat
+  , ElIContextHat
+
   , ElTerm(..)
   , ElITerm(..)
+
+  , ElBranch
+  , ElIBranch
+  , ElPattern(..)
 
   , ElBinOp(..)
   , elBinOpType
 
   , ElSubst
   , ElISubst
+
+  , ElAmbi(..)
+  , ElAmbiCore(..)
 
   , FromInternal(..)
   ) where
@@ -51,12 +59,12 @@ newtype ElIProgram m = ElIProgram [ElITop m]
   deriving stock (Eq, Show)
 
 data ElTop m
-  = ElTmDef ElId m (ElType m) (ElTerm m)
+  = ElTmDef ElId (ElType m) (ElTerm m)
   | ElTyDef [ElId] ElId m [(ElId, [ElType m])]
   deriving stock (Eq, Show)
 
 data ElITop m
-  = ElITmDef ElId m (ElIType m) (ElITerm m)
+  = ElITmDef ElId (ElIType m) (ElITerm m)
   | ElITyDef [ElId] ElId m [(ElId, [ElIType m])]
   deriving stock (Eq, Show)
 
@@ -72,11 +80,12 @@ data ElIKind m
 
 data ElType m
   = TyVar ElId
-  | TyThunk (ElContextHat m) (ElType m)
+  | TySusp (ElContextHat m) (ElType m)
   | TyForce (ElType m) (ElSubst m)
   | TyData [ElType m] ElId
   | TyBool m
   | TyInt m
+  | TyProd [ElType m]
   | TyUp m (ElContext m) (ElType m)
   | TyDown m (ElType m)
   | TyArr (ElType m) (ElType m)
@@ -85,11 +94,12 @@ data ElType m
 
 data ElIType m
   = ITyVar ElId
-  | ITyThunk (ElIContextHat m) (ElIType m)
+  | ITySusp (ElIContextHat m) (ElIType m)
   | ITyForce (ElIType m) (ElISubst m)
   | ITyData [ElIType m] ElId
   | ITyBool m
   | ITyInt m
+  | ITyProd [ElIType m]
   | ITyUp m (ElIContext m) (ElIType m)
   | ITyDown m (ElIType m)
   | ITyArr (ElIType m) (ElIType m)
@@ -120,23 +130,16 @@ data ElTerm m
   | TmIte (ElTerm m) (ElTerm m) (ElTerm m)
   | TmInt Integer
   | TmBinOp ElBinOp (ElTerm m) (ElTerm m)
-  | TmMatch (ElTerm m) (ElBranch m)
-  | TmThunk (ElContextHat m) (ElTerm m)
+  | TmTuple [ElTerm m]
+  | TmMatch (ElTerm m) [ElBranch m]
+  | TmSusp (ElContextHat m) (ElTerm m)
   | TmForce (ElTerm m) (ElSubst m)
   | TmStore (ElTerm m)
-  | TmLoad ElId (ElTerm m) (ElTerm m)
-  | TmLam ElId (Maybe (Either (ElType m) (ElKind m))) (ElTerm m)
-  | TmApp (ElTerm m) (ElAmbi m)
+  | TmLoad ElId (Maybe (ElType m)) (ElTerm m) (ElTerm m)
+  | TmLet (ElPattern m) (Maybe (ElType m)) (ElTerm m) (ElTerm m)
+  | TmAmbiLam (ElPattern m) (Maybe (ElContextEntry m)) (ElTerm m)
+  | TmAmbiApp (ElTerm m) (ElAmbi m)
   | TmAnn (ElTerm m) (ElType m)
-  deriving stock (Eq, Show)
-
-data ElAmbi m
-  = AmVar ElId
-  | AmData ElId [ElAmbi m]
-  | AmThunk (ElContextHat m) (ElAmbi m)
-  | AmForce (ElAmbi m) (ElSubst m)
-  | AmTerm (ElTerm m)
-  | AmType (ElType m)
   deriving stock (Eq, Show)
 
 data ElITerm m
@@ -147,19 +150,21 @@ data ElITerm m
   | ITmIte (ElITerm m) (ElITerm m) (ElITerm m)
   | ITmInt Integer
   | ITmBinOp ElBinOp (ElITerm m) (ElITerm m)
-  | ITmMatch (ElITerm m) (ElIBranch m)
-  | ITmThunk m (ElIContextHat m) (ElITerm m)
+  | ITmTuple [ElITerm m]
+  | ITmMatch (ElITerm m) [ElIBranch m]
+  | ITmSusp m (ElIContextHat m) (ElITerm m)
   | ITmForce m (ElITerm m) (ElISubst m)
   | ITmStore m (ElITerm m)
-  | ITmLoad m m ElId (ElITerm m) (ElITerm m)
-  | ITmLam ElId (ElType m) (ElITerm m)
-  | ITmTLam ElId (ElKind m) (ElITerm m)
+  | ITmLoad m m ElId (ElType m) (ElITerm m) (ElITerm m)
+  | ITmLet (ElPattern m) (ElIType m) (ElITerm m) (ElITerm m)
+  | ITmLam (ElPattern m) (ElIType m) (ElITerm m)
+  | ITmTLam ElId (ElIKind m) (ElITerm m)
   | ITmApp (ElITerm m) (ElITerm m)
   | ITmTApp (ElITerm m) (ElIType m)
   deriving stock (Eq, Show)
 
-type ElBranch m = [(ElPattern m, ElTerm m)]
-type ElIBranch m = [(ElPattern m, ElITerm m)]
+type ElBranch m = (ElPattern m, ElTerm m)
+type ElIBranch m = (ElPattern m, ElITerm m)
 
 data ElPattern m
   = PatWild
@@ -167,6 +172,7 @@ data ElPattern m
   | PatTrue
   | PatFalse
   | PatInt Integer
+  | PatTuple [ElPattern m]
   | PatConst ElId [ElPattern m]
   deriving stock (Eq, Show)
 
@@ -200,6 +206,18 @@ elBinOpType m OpLt  = (TyInt m, TyInt m, TyBool m)
 elBinOpType m OpGe  = (TyInt m, TyInt m, TyBool m)
 elBinOpType m OpGt  = (TyInt m, TyInt m, TyBool m)
 
+data ElAmbi m
+  = AmCore (ElAmbiCore m)
+  | AmTerm (ElTerm m)
+  | AmType (ElType m)
+  deriving stock (Eq, Show)
+
+data ElAmbiCore m
+  = AmVar ElId
+  | AmSusp (ElContextHat m) (ElAmbiCore m)
+  | AmForce (ElAmbiCore m) (ElSubst m)
+  deriving stock (Eq, Show)
+
 class FromInternal a where
   type Internal a
   fromInternal :: Internal a -> a
@@ -210,24 +228,25 @@ instance FromInternal (ElProgram m) where
 
 instance FromInternal (ElTop m) where
   type Internal (ElTop m) = ElITop m
-  fromInternal (ElITmDef x k ty t) = ElTmDef x k (fromInternal ty) (fromInternal t)
+  fromInternal (ElITmDef x ty t) = ElTmDef x (fromInternal ty) (fromInternal t)
   fromInternal (ElITyDef ys x k cons) = ElTyDef ys x k (fmap (fmap (fmap fromInternal)) cons)
 
 instance FromInternal (ElKind m) where
   type Internal (ElKind m) = ElIKind m
   fromInternal (IKiType k) = KiType k
-  fromInternal (IKiUp l ictx iki) = KiUp l (fmap fromInternal <$> ictx) (fromInternal iki)
+  fromInternal (IKiUp k ictx iki) = KiUp k (fmap fromInternal <$> ictx) (fromInternal iki)
 
 instance FromInternal (ElType m) where
   type Internal (ElType m) = ElIType m
   fromInternal (ITyVar x) = TyVar x
-  fromInternal (ITyThunk ihctx ity) = TyThunk ihctx (fromInternal ity)
+  fromInternal (ITySusp ihctx ity) = TySusp ihctx (fromInternal ity)
   fromInternal (ITyForce ity isub) = TyForce (fromInternal ity) (fromInternal <$> isub)
   fromInternal (ITyData itys x) = TyData (fromInternal <$> itys) x
   fromInternal (ITyBool k) = TyBool k
   fromInternal (ITyInt k) = TyInt k
-  fromInternal (ITyUp l ictx ity) = TyUp l (fmap fromInternal <$> ictx) (fromInternal ity)
-  fromInternal (ITyDown m ity) = TyDown m (fromInternal ity)
+  fromInternal (ITyProd itys) = TyProd (fromInternal <$> itys)
+  fromInternal (ITyUp k ictx ity) = TyUp k (fmap fromInternal <$> ictx) (fromInternal ity)
+  fromInternal (ITyDown k ity) = TyDown k (fromInternal ity)
   fromInternal (ITyArr ity0 ity1) = TyArr (fromInternal ity0) (fromInternal ity1)
   fromInternal (ITyForall x iki ity) = TyForall x (fromInternal iki) (fromInternal ity)
 
@@ -245,12 +264,14 @@ instance FromInternal (ElTerm m) where
   fromInternal (ITmIte it it0 it1) = TmIte (fromInternal it) (fromInternal it0) (fromInternal it1)
   fromInternal (ITmInt n) = TmInt n
   fromInternal (ITmBinOp bop it0 it1) = TmBinOp bop (fromInternal it0) (fromInternal it1)
+  fromInternal (ITmTuple its) = TmTuple (fromInternal <$> its)
   fromInternal (ITmMatch it ibrs) = TmMatch (fromInternal it) (fmap fromInternal <$> ibrs)
-  fromInternal (ITmThunk _ ihctx it) = TmThunk ihctx (fromInternal it)
+  fromInternal (ITmSusp _ ihctx it) = TmSusp ihctx (fromInternal it)
   fromInternal (ITmForce _ it isub) = TmForce (fromInternal it) (fromInternal <$> isub)
   fromInternal (ITmStore _ it) = TmStore (fromInternal it)
-  fromInternal (ITmLoad _ _ x it it0) = TmLoad x (fromInternal it) (fromInternal it0)
-  fromInternal (ITmLam x ty it) = TmLam x (Just (Left ty)) (fromInternal it)
-  fromInternal (ITmTLam x ki it) = TmLam x (Just (Right ki)) (fromInternal it)
-  fromInternal (ITmApp it0 it1) = TmApp (fromInternal it0) (AmTerm (fromInternal it1))
-  fromInternal (ITmTApp it0 ity1) = TmApp (fromInternal it0) (AmType (fromInternal ity1))
+  fromInternal (ITmLoad _ _ x ty it it0) = TmLoad x (Just ty) (fromInternal it) (fromInternal it0)
+  fromInternal (ITmLet x ty it it0) = TmLet x (Just (fromInternal ty)) (fromInternal it) (fromInternal it0)
+  fromInternal (ITmLam x ty it) = TmAmbiLam x (Just (EntryOfTy (fromInternal ty))) (fromInternal it)
+  fromInternal (ITmTLam x ki it) = TmAmbiLam (PatVar x) (Just (EntryOfKi (fromInternal ki))) (fromInternal it)
+  fromInternal (ITmApp it0 it1) = TmAmbiApp (fromInternal it0) (AmTerm (fromInternal it1))
+  fromInternal (ITmTApp it0 ity1) = TmAmbiApp (fromInternal it0) (AmType (fromInternal ity1))
