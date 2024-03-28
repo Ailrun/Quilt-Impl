@@ -39,6 +39,8 @@ module Elevator.Syntax
 
   , ElAmbi(..)
   , ElAmbiCore(..)
+  , ambiCore2term
+  , ambiCore2type
 
   , FromInternal(..)
   ) where
@@ -221,6 +223,16 @@ data ElAmbiCore m
   | AmSusp (ElContextHat m) (ElAmbiCore m)
   | AmForce (ElAmbiCore m) (ElSubst m)
   deriving stock (Eq, Show)
+
+ambiCore2term :: ElAmbiCore m -> ElTerm m
+ambiCore2term (AmVar x) = TmVar x
+ambiCore2term (AmSusp ctxh a) = TmSusp ctxh (ambiCore2term a)
+ambiCore2term (AmForce a sub) = TmForce (ambiCore2term a) sub
+
+ambiCore2type :: ElAmbiCore m -> ElType m
+ambiCore2type (AmVar x) = TyVar x
+ambiCore2type (AmSusp ctxh a) = TySusp ctxh (ambiCore2type a)
+ambiCore2type (AmForce a sub) = TyForce (ambiCore2type a) sub
 
 class FromInternal a where
   type Internal a
