@@ -7,6 +7,8 @@ module Elevator.Syntax
   , ElProgram(..)
   , ElIProgram(..)
 
+  , ElCommand(..)
+
   , ElTop(..)
   , ElITop(..)
 
@@ -58,14 +60,19 @@ newtype ElProgram m = ElProgram [ElTop m]
 newtype ElIProgram m = ElIProgram [ElITop m]
   deriving stock (Eq, Show)
 
+data ElCommand m
+  = ComTop (ElTop m)
+  | ComTerm (ElTerm m)
+  deriving stock (Eq, Show)
+
 data ElTop m
-  = ElTmDef ElId (ElType m) (ElTerm m)
-  | ElTyDef [ElId] ElId m [(ElId, [ElType m])]
+  = TopTmDef ElId (ElType m) (ElTerm m)
+  | TopTyDef [ElId] ElId m [(ElId, [ElType m])]
   deriving stock (Eq, Show)
 
 data ElITop m
-  = ElITmDef ElId (ElIType m) (ElITerm m)
-  | ElITyDef [ElId] ElId m [(ElId, [ElIType m])]
+  = TopITmDef ElId (ElIType m) (ElITerm m)
+  | TopITyDef [ElId] ElId m [(ElId, [ElIType m])]
   deriving stock (Eq, Show)
 
 data ElKind m
@@ -131,12 +138,10 @@ data ElTerm m
   | TmInt Integer
   | TmBinOp ElBinOp (ElTerm m) (ElTerm m)
   | TmTuple [ElTerm m]
-  | TmMatch (ElTerm m) [ElBranch m]
+  | TmMatch (ElTerm m) (Maybe (ElType m)) [ElBranch m]
   | TmSusp (ElContextHat m) (ElTerm m)
   | TmForce (ElTerm m) (ElSubst m)
   | TmStore (ElTerm m)
-  | TmLoad ElId (Maybe (ElType m)) (ElTerm m) (ElTerm m)
-  | TmLet (ElPattern m) (Maybe (ElType m)) (ElTerm m) (ElTerm m)
   | TmAmbiLam (ElPattern m) (Maybe (ElContextEntry m)) (ElTerm m)
   | TmAmbiApp (ElTerm m) (ElAmbi m)
   | TmAnn (ElTerm m) (ElType m)
@@ -151,12 +156,10 @@ data ElITerm m
   | ITmInt Integer
   | ITmBinOp ElBinOp (ElITerm m) (ElITerm m)
   | ITmTuple [ElITerm m]
-  | ITmMatch (ElITerm m) [ElIBranch m]
+  | ITmMatch m (ElITerm m) (ElIType m) [ElIBranch m]
   | ITmSusp m (ElIContextHat m) (ElITerm m)
   | ITmForce m (ElITerm m) (ElISubst m)
   | ITmStore m (ElITerm m)
-  | ITmLoad m m ElId (ElType m) (ElITerm m) (ElITerm m)
-  | ITmLet (ElPattern m) (ElIType m) (ElITerm m) (ElITerm m)
   | ITmLam (ElPattern m) (ElIType m) (ElITerm m)
   | ITmTLam ElId (ElIKind m) (ElITerm m)
   | ITmApp (ElITerm m) (ElITerm m)
@@ -173,7 +176,8 @@ data ElPattern m
   | PatFalse
   | PatInt Integer
   | PatTuple [ElPattern m]
-  | PatConst ElId [ElPattern m]
+  | PatLoad (ElPattern m)
+  | PatData ElId [ElPattern m]
   deriving stock (Eq, Show)
 
 type ElSubst m = [ElTerm m]
@@ -228,8 +232,8 @@ instance FromInternal (ElProgram m) where
 
 instance FromInternal (ElTop m) where
   type Internal (ElTop m) = ElITop m
-  fromInternal (ElITmDef x ty t) = ElTmDef x (fromInternal ty) (fromInternal t)
-  fromInternal (ElITyDef ys x k cons) = ElTyDef ys x k (fmap (fmap (fmap fromInternal)) cons)
+  fromInternal (TopITmDef x ty t) = TopTmDef x (fromInternal ty) (fromInternal t)
+  fromInternal (TopITyDef ys x k cons) = TopTyDef ys x k (fmap (fmap (fmap fromInternal)) cons)
 
 instance FromInternal (ElKind m) where
   type Internal (ElKind m) = ElIKind m
@@ -265,12 +269,10 @@ instance FromInternal (ElTerm m) where
   fromInternal (ITmInt n) = TmInt n
   fromInternal (ITmBinOp bop it0 it1) = TmBinOp bop (fromInternal it0) (fromInternal it1)
   fromInternal (ITmTuple its) = TmTuple (fromInternal <$> its)
-  fromInternal (ITmMatch it ibrs) = TmMatch (fromInternal it) (fmap fromInternal <$> ibrs)
+  fromInternal (ITmMatch _ it ity ibrs) = TmMatch (fromInternal it) (Just (fromInternal ity)) (fmap fromInternal <$> ibrs)
   fromInternal (ITmSusp _ ihctx it) = TmSusp ihctx (fromInternal it)
   fromInternal (ITmForce _ it isub) = TmForce (fromInternal it) (fromInternal <$> isub)
   fromInternal (ITmStore _ it) = TmStore (fromInternal it)
-  fromInternal (ITmLoad _ _ x ty it it0) = TmLoad x (Just ty) (fromInternal it) (fromInternal it0)
-  fromInternal (ITmLet x ty it it0) = TmLet x (Just (fromInternal ty)) (fromInternal it) (fromInternal it0)
   fromInternal (ITmLam x ty it) = TmAmbiLam x (Just (EntryOfTy (fromInternal ty))) (fromInternal it)
   fromInternal (ITmTLam x ki it) = TmAmbiLam (PatVar x) (Just (EntryOfKi (fromInternal ki))) (fromInternal it)
   fromInternal (ITmApp it0 it1) = TmAmbiApp (fromInternal it0) (AmTerm (fromInternal it1))

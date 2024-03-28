@@ -2,19 +2,22 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Control.Monad.Extra    (concatForM, loopM)
-import Data.Hashable          (Hashable)
-import Data.Text.IO           qualified as T
-import Elevator.Evaluator     (eval)
-import Elevator.ModeSpec      (ElModeSpec (..))
-import Elevator.Parser        (fullCommandParse, fullFileParse)
-import Elevator.PrettyPrinter (prettyMode, prettyType, showDoc, showPretty)
-import Elevator.Syntax        (ElIProgram (..), ElTop (..))
-import Elevator.TypeChecker   (typeCheckProg, typeCheckProgIncremental,
-                               typeInfer)
-import GHC.Generics           (Generic)
-import System.Environment     (getArgs)
-import System.IO              (hFlush, stdout)
+import Control.Monad.Extra (loopM, forM_)
+import Data.Hashable       (Hashable)
+import Data.Text.IO        qualified as T
+import GHC.Generics        (Generic)
+import System.Environment  (getArgs)
+import System.IO           (hFlush, stdout)
+
+-- import Elevator.Evaluator     (eval)
+import Elevator.ModeSpec   (ElModeSpec (..))
+import Elevator.Parser     (readEitherCompleteCommand, readEitherCompleteFile)
+-- import Elevator.PrettyPrinter (prettyMode, prettyType, showDoc, showPretty)
+import Elevator.Syntax     (ElCommand (..), ElProgram (..), ElTop (..))
+import Data.Text (Text)
+import System.Exit (exitSuccess)
+-- import Elevator.TypeChecker   (typeCheckProg, typeCheckProgIncremental,
+--                                typeInfer)
 
 data TwoMode = MCode | MProg
   deriving (Eq, Show, Generic, Hashable)
@@ -33,62 +36,100 @@ instance ElModeSpec TwoMode where
   modeSt MProg _ = True
   modeSt MCode _ = True
 
-  modeOp MProg _ = True
-  modeOp MCode _ = True
-
-mainLoop :: ElIProgram TwoMode -> Integer -> IO ()
-mainLoop iprog@(ElIProgram itops) n = do
-  putStr "> "
-  hFlush stdout
-  l <- T.getLine
-  if l == "@"
-  then do
-    pl <- flip loopM "" $ \pl -> do
-      l'' <- T.getLine
-      pure
-        $ if l'' == "@"
-          then Right pl
-          else Left $ pl <> "\n" <> l''
-    mainFun pl
-  else mainFun l
-  where
-    mainFun str =
-      case fullCommandParse ("<line " <> show n <> ">") str of
-        Right (Left (top@(ElDef x _ _ _) :: ElTop TwoMode)) ->
-          case typeCheckProgIncremental iprog top of
-            Right itop -> do
-              putStrLn $ "Top-level definition " <> show x <> " is defined"
-              mainLoop (ElIProgram $ itops <> [itop]) (n + 1)
-            Left err -> do
-              putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
-              mainLoop iprog (n + 1)
-        Right (Right tm) -> do
-          case typeInfer iprog MProg tm of
-            Right (itm, ty) -> do
-              case eval iprog MProg itm of
-                Right r -> do
-                  putStrLn $ showPretty 80 r
-                  putStrLn . showDoc 80 $ "  : " <> prettyMode MProg <> " " <> prettyType 0 ty
-                Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
-            Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
-          mainLoop iprog (n + 1)
-        Left err -> do
-          putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
-          mainLoop iprog (n + 1)
-
 main :: IO ()
 main = do
   args <- getArgs
-  itops <- concatForM args $ \fp -> do
+  forM_ args $ \fp -> do
     txt <- T.readFile fp
-    case fullFileParse fp txt of
-      Right prog ->
-        case typeCheckProg prog of
-          Right (ElIProgram itops) -> pure itops
-          Left err -> do
-            putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
-            pure []
-      Left err -> do
-        putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
-        pure []
-  mainLoop (ElIProgram itops) 0
+    case readEitherCompleteFile fp txt of
+      Right (prog :: Elevator.Syntax.ElProgram TwoMode) -> print prog
+      Left err -> putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
+  mainLoop 0
+
+mainLoop :: Integer -> IO ()
+mainLoop n = do
+  forcePutStr "> "
+  l <- getMultiLine
+  mainFun l
+  where
+    mainFun ":quit" = exitSuccess
+    mainFun ":exit" = exitSuccess
+    mainFun str = do
+      case readEitherCompleteCommand ("<line " <> show n <> ">") str of
+        Right (Elevator.Syntax.ComTop (top :: Elevator.Syntax.ElTop TwoMode)) -> print top
+        Right (Elevator.Syntax.ComTerm tm) -> print tm
+        Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
+      mainLoop (n + 1)
+
+getMultiLine :: IO Text
+getMultiLine = do
+  l <- T.getLine
+  case l of
+    "@@@" -> do
+      flip loopM "" $ \pl -> do
+        forcePutStr "... | "
+        l'' <- T.getLine
+        pure $ case l'' of
+          "@@@" -> Right pl
+          _ -> Left $ pl <> "\n" <> l''
+    _ -> pure l
+
+forcePutStr :: String -> IO ()
+forcePutStr s = putStr s >> hFlush stdout
+
+-- main :: IO ()
+-- main = do
+--   args <- getArgs
+--   itops <- concatForM args $ \fp -> do
+--     txt <- T.readFile fp
+--     case fullFileParse fp txt of
+--       Right prog ->
+--         case typeCheckProg prog of
+--           Right (ElIProgram itops) -> pure itops
+--           Left err -> do
+--             putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
+--             pure []
+--       Left err -> do
+--         putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
+--         pure []
+--   mainLoop (ElIProgram itops) 0
+
+-- mainLoop :: ElIProgram TwoMode -> Integer -> IO ()
+-- mainLoop iprog@(ElIProgram itops) n = do
+--   putStr "> "
+--   hFlush stdout
+--   l <- T.getLine
+--   if l == "@"
+--   then do
+--     pl <- flip loopM "" $ \pl -> do
+--       l'' <- T.getLine
+--       pure
+--         $ if l'' == "@"
+--           then Right pl
+--           else Left $ pl <> "\n" <> l''
+--     mainFun pl
+--   else mainFun l
+--   where
+--     mainFun str =
+--       case fullCommandParse ("<line " <> show n <> ">") str of
+--         Right (Left (top@(ElDef x _ _ _) :: ElTop TwoMode)) ->
+--           case typeCheckProgIncremental iprog top of
+--             Right itop -> do
+--               putStrLn $ "Top-level definition " <> show x <> " is defined"
+--               mainLoop (ElIProgram $ itops <> [itop]) (n + 1)
+--             Left err -> do
+--               putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
+--               mainLoop iprog (n + 1)
+--         Right (Right tm) -> do
+--           case typeInfer iprog MProg tm of
+--             Right (itm, ty) -> do
+--               case eval iprog MProg itm of
+--                 Right r -> do
+--                   putStrLn $ showPretty 80 r
+--                   putStrLn . showDoc 80 $ "  : " <> prettyMode MProg <> " " <> prettyType 0 ty
+--                 Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
+--             Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
+--           mainLoop iprog (n + 1)
+--         Left err -> do
+--           putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
+--           mainLoop iprog (n + 1)
