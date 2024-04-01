@@ -1,12 +1,16 @@
 {-# LANGUAGE DeriveAnyClass    #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns      #-}
 module Main where
 
-import Control.Monad.Extra (loopM, forM_)
+import Control.Monad.Extra (forM_, loopM)
 import Data.Hashable       (Hashable)
+import Data.Text           (Text)
+import Data.Text           qualified as T
 import Data.Text.IO        qualified as T
 import GHC.Generics        (Generic)
 import System.Environment  (getArgs)
+import System.Exit         (exitSuccess)
 import System.IO           (hFlush, stdout)
 
 -- import Elevator.Evaluator     (eval)
@@ -14,8 +18,6 @@ import Elevator.ModeSpec   (ElModeSpec (..))
 import Elevator.Parser     (readEitherCompleteCommand, readEitherCompleteFile)
 -- import Elevator.PrettyPrinter (prettyMode, prettyType, showDoc, showPretty)
 import Elevator.Syntax     (ElCommand (..), ElProgram (..), ElTop (..))
-import Data.Text (Text)
-import System.Exit (exitSuccess)
 -- import Elevator.TypeChecker   (typeCheckProg, typeCheckProgIncremental,
 --                                typeInfer)
 
@@ -52,8 +54,13 @@ mainLoop n = do
   l <- getMultiLine
   mainFun l
   where
-    mainFun ":quit" = exitSuccess
-    mainFun ":exit" = exitSuccess
+    isTerminationCommand str = not (T.null str) && (T.isPrefixOf str "quit" || T.isPrefixOf str "exit")
+
+    mainFun (T.uncons -> Just ('@', str))
+      | isTerminationCommand str = exitSuccess
+      | otherwise = do
+          putStrLn "Unexpected command"
+          mainLoop (n + 1)
     mainFun str = do
       case readEitherCompleteCommand ("<line " <> show n <> ">") str of
         Right (Elevator.Syntax.ComTop (top :: Elevator.Syntax.ElTop TwoMode)) -> print top
@@ -71,7 +78,7 @@ getMultiLine = do
         l'' <- T.getLine
         pure $ case l'' of
           "@@@" -> Right pl
-          _ -> Left $ pl <> "\n" <> l''
+          _     -> Left $ pl <> "\n" <> l''
     _ -> pure l
 
 forcePutStr :: String -> IO ()
