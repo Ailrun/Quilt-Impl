@@ -18,6 +18,7 @@ import Elevator.ModeSpec   (ElModeSpec (..))
 import Elevator.Parser     (readEitherCompleteCommand, readEitherCompleteFile)
 -- import Elevator.PrettyPrinter (prettyMode, prettyType, showDoc, showPretty)
 import Elevator.Syntax     (ElCommand (..), ElProgram (..), ElTop (..))
+import Elevator.PrettyPrinter (showPretty)
 -- import Elevator.TypeChecker   (typeCheckProg, typeCheckProgIncremental,
 --                                typeInfer)
 
@@ -63,8 +64,12 @@ mainLoop n = do
           mainLoop (n + 1)
     mainFun str = do
       case readEitherCompleteCommand ("<line " <> show n <> ">") str of
-        Right (Elevator.Syntax.ComTop (top :: Elevator.Syntax.ElTop TwoMode)) -> print top
-        Right (Elevator.Syntax.ComTerm tm) -> print tm
+        Right (Elevator.Syntax.ComTop (top :: Elevator.Syntax.ElTop TwoMode)) -> do
+          putStrLn $ showPretty 80 top
+          print top
+        Right (Elevator.Syntax.ComTerm tm) -> do
+          putStrLn $ showPretty 80 tm
+          print tm
         Left err -> putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
       mainLoop (n + 1)
 

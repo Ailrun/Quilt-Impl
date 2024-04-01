@@ -30,7 +30,7 @@ readEitherCompleteCommand :: (ElModeSpec m) => FilePath -> Text -> Either String
 readEitherCompleteCommand = runCompleteParser parseCommand
 
 runCompleteParser :: ElParser a -> FilePath -> Text -> Either String a
-runCompleteParser p fp = first errorBundlePretty . parse (between MPC.space eof p) fp
+runCompleteParser p fp = first errorBundlePretty . parse (between (hidden MPC.space) eof p) fp
 
 parseCommand :: (ElModeSpec m) => ElParser (ElCommand m)
 parseCommand = ComTop <$> parseTop <|> ComTerm <$> parseTerm
@@ -39,23 +39,25 @@ parseProgram :: (ElModeSpec m) => ElParser (ElProgram m)
 parseProgram = ElProgram <$> many parseTop
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
-parseTop = (parseTyDefTop <|> parseTmDefTop) <?> "top-level definition"
+parseTop = parseTyDefTop <|> parseTmDefTop
 
 parseTyDefTop :: (ElModeSpec m) => ElParser (ElTop m)
-parseTyDefTop = do
-  keyword "type"
-  ys <- parened (sepBy parseLowerId (symbol "*" <?> "more type constructor arguments separated by \"*\"")) <|> option [] (pure <$> parseLowerId)
-  x <- parseUpperId
-  m <- parseMode
-  symbol "="
-  cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
-  toplevelDelimiter
-  pure $ TopTyDef ys x m cs
+parseTyDefTop = impl <?> "top-level type definition"
+  where
+    impl = do
+      keyword "data"
+      ys <- parened (sepBy parseLowerId (symbol "*" <?> "more type constructor arguments separated by \"*\"")) <|> option [] (pure <$> parseLowerId)
+      x <- parseUpperId
+      m <- parseMode
+      symbol "="
+      cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
+      toplevelDelimiter
+      pure $ TopTyDef ys x m cs
 
 parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTmDefTop = do
   (x, ps, ty) <- try $ do
-    x <- parseLowerId
+    x <- parseLowerId <?> "identifier for term definition"
     ps <- many parseAtomicPattern
     symbol ":"
     ty <- parseType
@@ -74,18 +76,20 @@ parseTyDefCons =
   <?> "type constructor definition"
 
 parseTerm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseTerm = do
-  choice
-    [ parseLamTerm
-    , parseMatchTerm
-    , parseLetTerm
-    , parseLoadTerm
-    , parseIteTerm
-    , parseBinOpTerm
-    ]
-  <**> parsePostAnn
+parseTerm = impl <?> "term"
   where
-    parsePostAnn = option id (symbol ":" $> flip TmAnn <*> parseType)
+    impl =
+      choice
+        [ parseLamTerm
+        , parseMatchTerm
+        , parseLetTerm
+        , parseLoadTerm
+        , parseIteTerm
+        , parseBinOpTerm
+        ]
+      <**> parsePostAnn
+
+    parsePostAnn = option id (symbol ":" $> flip TmAnn <*> parseType <?> "type annotation")
 
 parseLamTerm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLamTerm = do
@@ -230,6 +234,7 @@ parseAtomicTerm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseAtomicTerm =
   parseUnitTerm
   <|> wrapTupleLike <$> parseTupleLikeTerm
+  <?> "term"
   where
     wrapTupleLike (t :| []) = t
     wrapTupleLike ts = TmTuple (NE.toList ts)
@@ -250,7 +255,7 @@ parseUnitTerm =
 parseAtomicAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
 parseAtomicAmbi =
   choice
-    [ try (AmCore <$> parseAtomicAmbiCore)
+    [ try (AmCore <$> hidden parseAtomicAmbiCore)
     , try (AmType <$> parseAtomicType)
     , AmTerm <$> parseAtomicTerm
     ]
@@ -267,7 +272,7 @@ parseAtomicAmbiCore :: (ElModeSpec m) => ElParser (ElAmbiCore m)
 parseAtomicAmbiCore = AmVar <$> parseLowerId <|> parened parseAmbiCore
 
 parseKind :: (ElModeSpec m) => ElParser (ElKind m)
-parseKind = liftA2 (foldr ($)) parseAtomicKind (many (keyword "Up" $> flip KiUp [] <*> parseMode))
+parseKind = liftA2 (foldr ($)) parseAtomicKind (many (keyword "Up" $> flip KiUp [] <*> parseMode)) <?> "kind"
 
 parseAtomicKind :: (ElModeSpec m) => ElParser (ElKind m)
 parseAtomicKind =
@@ -276,6 +281,7 @@ parseAtomicKind =
     , parseContextualUpCommon KiUp parseKind
     , parened parseKind
     ]
+  <?> "kind"
 
 parseType :: (ElModeSpec m) => ElParser (ElType m)
 parseType =
@@ -283,6 +289,7 @@ parseType =
     (flip (foldr ($)))
     (many (try (parseArgSpec <* symbol "->")))
     parseProdType
+  <?> "type"
   where
     parseArgSpec =
       try (parened (liftA2 TyForall parseLowerId (symbol ":" *> parseKind)))
@@ -328,6 +335,7 @@ parseAtomicType :: (ElModeSpec m) => ElParser (ElType m)
 parseAtomicType =
   parseUnitType
   <|> parened parseType
+  <?> "type"
 
 parseUnitType :: (ElModeSpec m) => ElParser (ElType m)
 parseUnitType =
@@ -417,7 +425,7 @@ keywords =
   , "match"
   , "with"
   , "end"
-  , "type"
+  , "data"
   , "of"
   ]
 
@@ -452,7 +460,7 @@ identifierOf firstChar = identifierImpl
       lexeme ((T.pack .). (:) <$> firstChar <*> many restIdChar)
 
 restIdChar :: ElParser Char
-restIdChar = MPC.alphaNumChar <|> oneOf ("_'" :: String)
+restIdChar = MPC.alphaNumChar <|> oneOf ("_'" :: String) <?> "identifier character"
 
 lexeme :: ElParser a -> ElParser a
 lexeme p = p <* hidden MPC.space
