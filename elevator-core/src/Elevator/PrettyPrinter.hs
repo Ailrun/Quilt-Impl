@@ -4,10 +4,11 @@
 module Elevator.PrettyPrinter where
 
 import Data.String                 (IsString (fromString))
-import Elevator.ModeSpec
-import Elevator.Syntax
 import Prettyprinter
 import Prettyprinter.Render.String (renderString)
+
+import Elevator.ModeSpec
+import Elevator.Syntax
 
 showDoc :: Int -> Doc () -> String
 showDoc n = renderString . layoutSmart (defaultLayoutOptions { layoutPageWidth = AvailablePerLine n 1})

@@ -13,7 +13,6 @@ import Data.List.NonEmpty                 qualified as NE
 import Data.Text                          (Text)
 import Data.Text                          qualified as T
 import Data.Void                          (Void)
-
 import Text.Megaparsec
 import Text.Megaparsec.Char               qualified as MPC
 import Text.Megaparsec.Char.Lexer         qualified as MPCL
@@ -126,7 +125,7 @@ parsePattern =
   choice
     [ keyword "load" $> PatLoad <*> parseAtomicPattern
     , liftA2 PatData parseUpperId parseDataArgPatterns
-    , parseAtomicPattern 
+    , parseAtomicPattern
     ]
   <?> "pattern"
   where
@@ -140,7 +139,7 @@ parseAtomicPattern =
   <|> wrapTupleLike <$> parseTupleLikePattern
   where
     wrapTupleLike (pat :| []) = pat
-    wrapTupleLike pats = PatTuple (NE.toList pats)
+    wrapTupleLike pats        = PatTuple (NE.toList pats)
 
 parseTupleLikePattern :: (ElModeSpec m) => ElParser (NonEmpty (ElPattern m))
 parseTupleLikePattern = parened (CMCNE.sepBy1 parsePattern (symbol ","))
@@ -237,7 +236,7 @@ parseAtomicTerm =
   <?> "term"
   where
     wrapTupleLike (t :| []) = t
-    wrapTupleLike ts = TmTuple (NE.toList ts)
+    wrapTupleLike ts        = TmTuple (NE.toList ts)
 
 parseTupleLikeTerm :: (ElModeSpec m) => ElParser (NonEmpty (ElTerm m))
 parseTupleLikeTerm = parened (CMCNE.sepBy1 parseTerm (symbol ","))
@@ -329,7 +328,7 @@ parseTupleArgDataType = do
   neTys <- pure <$> parseUnitType <|> parened (CMCNE.sepBy1 parseType (symbol ","))
   case neTys of
     ty :| [] -> option ty (TyData [ty] <$> parseUpperId <?> "type constructor")
-    _ -> TyData (NE.toList neTys) <$> parseUpperId <?> "type constructor"
+    _        -> TyData (NE.toList neTys) <$> parseUpperId <?> "type constructor"
 
 parseAtomicType :: (ElModeSpec m) => ElParser (ElType m)
 parseAtomicType =
