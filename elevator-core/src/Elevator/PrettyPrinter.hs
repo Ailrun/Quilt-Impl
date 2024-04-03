@@ -3,6 +3,8 @@
 {-# OPTIONS_GHC -Wno-orphans #-}
 module Elevator.PrettyPrinter where
 
+import Data.Sequence               (Seq (Empty))
+import Data.Sequence               qualified as Seq
 import Data.String                 (IsString (fromString))
 import Prettyprinter
 import Prettyprinter.Render.String (renderString)
@@ -23,17 +25,17 @@ instance (ElModeSpec m) => Pretty (ElTop m) where
   pretty = prettyTop
 
 prettyTop :: (ElModeSpec m) => ElTop m -> Doc ann
-prettyTop (TopTmDef x ty t) = pretty x <+> colon <+> pretty ty <+> equals <> group (softline <> pretty t)
-prettyTop (TopTyDef ys x m cons) = "data" <+> parens (prettyContextHat ys) <+> pretty x <> prettyMode m <> group (softline <> equals <+> vsepWith "|" (fmap prettyCon cons))
+prettyTop (TopTermDef x ty t) = pretty x <+> colon <+> pretty ty <+> equals <> group (softline <> pretty t)
+prettyTop (TopTypeDef ys x m cons) = "data" <+> parens (prettyContextHat (Seq.fromList ys)) <+> pretty x <> prettyMode m <> group (softline <> equals <+> vsepWith "|" (fmap prettyCon cons))
   where
-    prettyCon (c, tys) = pretty c <+> "of" <+> prettyProdLike 1 tys
+    prettyCon (c, tys) = pretty c <+> "of" <+> prettyProdLike 2 tys
 
 instance (ElModeSpec m) => Pretty (ElKind m) where
   pretty = prettyKind 0
 
 prettyKind :: (ElModeSpec m) => Int -> ElKind m -> Doc ann
 prettyKind _ (KiType k) = "Type" <> prettyMode k
-prettyKind p (KiUp k [] ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
+prettyKind p (KiUp k Empty ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
 prettyKind p (KiUp k ctx ki) = parensIf (p > 1) $ brackets (prettyContext ctx <+> turnstile <+> pretty ki) <+> "Up" <> prettyMode k
 
 instance (ElModeSpec m) => Pretty (ElType m) where
@@ -43,21 +45,28 @@ prettyType :: (ElModeSpec m) => Int -> ElType m -> Doc ann
 prettyType _ (TyVar x) = pretty x
 prettyType _ (TyInt k) = "Int" <> prettyMode k
 prettyType _ (TyBool k) = "Bool" <> prettyMode k
-prettyType _ (TyProd tys) = prettyProdLike 1 tys
+prettyType _ (TyProd tys) = prettyProdLike 2 tys
 prettyType _ (TyData [] x) = pretty x
-prettyType p (TyData [ty] x) = parensIf (p > 1) $ prettyType 2 ty <+> pretty x
-prettyType p (TyData tys x) = parensIf (p > 1) $ prettyProdLike 1 tys <+> pretty x
-prettyType p (TyUp k [] ty) = parensIf (p > 1) $ prettyType 2 ty <+> "Up" <> prettyMode k
-prettyType p (TyUp k ctx ty) = parensIf (p > 1) $ brackets (prettyContext ctx <+> turnstile <+> pretty ty) <+> "Up" <> prettyMode k
-prettyType p (TyDown k ty) = parensIf (p > 1) $ prettyType 2 ty <+> "Down" <> prettyMode k
-prettyType p (TySusp [] ty) = parensIf (p > 1) $ "susp" <+> prettyType 2 ty
-prettyType p (TySusp ctxh ty) = parensIf (p > 1) $ "susp" <+> parens (prettyContextHat ctxh <+> dot <+> pretty ty)
-prettyType p (TyForce ty []) = parensIf (p > 1) $ "force" <+> prettyType 2 ty
-prettyType p (TyForce ty sub) = parensIf (p > 1) $ "force" <+> prettyType 2 ty <> softline <> nest 2 ("with" <+> prettyTupleLike 0 sub)
-prettyType p (TyArr ty0 ty1) = parensIf (p > 0) $ prettyType 1 ty0 <+> singlearrow <+> prettyType 0 ty1
-prettyType p (TyForall a ki0 ty1) = parensIf (p > 0) $ parens (pretty a <+> colon <+> pretty ki0) <+> singlearrow <+> prettyType 0 ty1
+prettyType p (TyData [ty] x) = parensIf (p > 2) $ prettyType 3 ty <+> pretty x
+prettyType p (TyData tys x) = parensIf (p > 2) $ prettyProdLike 2 tys <+> pretty x
+prettyType p (TyUp k Empty ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Up" <> prettyMode k
+prettyType p (TyUp k ctx ty) = parensIf (p > 2) $ brackets (prettyContext ctx <+> turnstile <+> pretty ty) <+> "Up" <> prettyMode k
+prettyType p (TyDown k ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Down" <> prettyMode k
+prettyType p (TySusp Empty ty) = parensIf (p > 2) $ "susp" <+> prettyType 3 ty
+prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> parens (prettyContextHat ctxh <+> dot <+> pretty ty)
+prettyType p (TyForce ty Empty) = parensIf (p > 2) $ "force" <+> prettyType 3 ty
+prettyType p (TyForce ty sub) = parensIf (p > 2) $ "force" <+> prettyType 3 ty <> softline <> nest 2 ("with" <+> prettySubst sub)
+prettyType p (TyArr ty0 ty1) = parensIf (p > 1) $ prettyType 2 ty0 <+> singlearrow <+> prettyType 1 ty1
+prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) $ parens (pretty a <+> colon <+> pretty ki0) <+> singlearrow <+> prettyType 1 ty1
+prettyType p (TyAnn ty ki) =
+  parensIf (p > 0)
+  . nest 2
+  $ fillSep
+    [ prettyType 1 ty
+    , colon <+> pretty ki
+    ]
 
-prettyProdLike :: (ElModeSpec m) => Int -> [ElType m] -> Doc ann
+prettyProdLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElType m) -> Doc ann
 prettyProdLike p = group . parens . vsepWith "*" . fmap (prettyType p)
 
 prettyTypeAnn :: (ElModeSpec m) => Maybe (ElType m) -> Doc ann
@@ -68,8 +77,8 @@ instance (ElModeSpec m) => Pretty (ElContextEntry m) where
   pretty = prettyContextEntry
 
 prettyContextEntry :: (ElModeSpec m) => ElContextEntry m -> Doc ann
-prettyContextEntry (EntryOfKi ki) = pretty ki
-prettyContextEntry (EntryOfTy ty) = pretty ty
+prettyContextEntry (CEKind ki) = pretty ki
+prettyContextEntry (CEType ty) = pretty ty
 
 prettyContext :: (ElModeSpec m) => ElContext m -> Doc ann
 prettyContext = group . vsepWith comma . fmap (\(x, entry) -> pretty x <> colon <> pretty entry)
@@ -98,10 +107,10 @@ prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . hang 2 $ align (prettyTer
     (p', lp, rp) = precedenceBinOp bop
 prettyTerm _ (TmTuple ts) = prettyTupleLike 0 ts
 prettyTerm p (TmData x ts) = parensIf (p > 10) . hang 2 $ pretty x <> softline <> prettyTupleLike 0 ts
-prettyTerm p (TmSusp [] t) = parensIf (p > 10) . hang 2 $ "susp" <+> prettyTerm 11 t
+prettyTerm p (TmSusp Empty t) = parensIf (p > 10) . hang 2 $ "susp" <+> prettyTerm 11 t
 prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) . hang 2 $ "susp" <+> parens (prettyContextHat ctxh <+> dot <+> pretty t)
-prettyTerm p (TmForce t []) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t
-prettyTerm p (TmForce t sub) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t <> softline <> "with" <+> prettyTupleLike 0 sub
+prettyTerm p (TmForce t Empty) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t
+prettyTerm p (TmForce t sub) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t <> softline <> "with" <+> prettySubst sub
 prettyTerm p (TmStore t) = parensIf (p > 10) . hang 2 $ "store" <> softline <> prettyTerm 11 t
 prettyTerm p (TmMatch t mayTy [(PatLoad pat, t0)]) =
   parensIf (p > 0)
@@ -161,11 +170,20 @@ prettyTerm p (TmAnn t ty) =
   . nest 2
   $ fillSep
     [ prettyTerm 1 t
-    , colon <+> prettyType 0 ty
+    , colon <+> pretty ty
     ]
 
-prettyTupleLike :: (ElModeSpec m) => Int -> [ElTerm m] -> Doc ann
+prettyTupleLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElTerm m) -> Doc ann
 prettyTupleLike p = group . parens . vsepWith comma . fmap (prettyTerm p)
+
+instance (ElModeSpec m) => Pretty (ElSubstEntry m) where
+  pretty = prettySubstEntry
+
+prettySubstEntry :: (ElModeSpec m) => ElSubstEntry m -> Doc ann
+prettySubstEntry (SEAmbi am) = pretty am
+
+prettySubst :: (ElModeSpec m) => ElSubst m -> Doc ann
+prettySubst = group . vsepWith comma . fmap pretty
 
 instance (ElModeSpec m) => Pretty (ElITerm m) where
   pretty = prettyTerm 0 . fromInternal

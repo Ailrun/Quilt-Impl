@@ -10,6 +10,7 @@ import Data.Functor                       (($>))
 import Data.List                          (foldl')
 import Data.List.NonEmpty                 (NonEmpty (..))
 import Data.List.NonEmpty                 qualified as NE
+import Data.Sequence                      qualified as Seq
 import Data.Text                          (Text)
 import Data.Text                          qualified as T
 import Data.Void                          (Void)
@@ -51,7 +52,7 @@ parseTyDefTop = impl <?> "top-level type definition"
       symbol "="
       cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
       toplevelDelimiter
-      pure $ TopTyDef ys x m cs
+      pure $ TopTypeDef ys x m cs
 
 parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTmDefTop = do
@@ -64,7 +65,7 @@ parseTmDefTop = do
     pure (x, ps, ty)
   t <- parseTerm <?> "term definition"
   toplevelDelimiter
-  pure . TopTmDef x ty $ foldr (`TmAmbiLam` Nothing) t ps
+  pure . TopTermDef x ty $ foldr (`TmAmbiLam` Nothing) t ps
 
 parseTyDefCons :: (ElModeSpec m) => ElParser (ElId, [ElType m])
 parseTyDefCons =
@@ -251,6 +252,14 @@ parseUnitTerm =
     , flip TmData [] <$> parseUpperId
     ]
 
+parseAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
+parseAmbi =
+  choice
+    [ try (AmCore <$> hidden parseAmbiCore)
+    , try (AmType <$> parseType)
+    , AmTerm <$> parseTerm
+    ]
+
 parseAtomicAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
 parseAtomicAmbi =
   choice
@@ -271,7 +280,7 @@ parseAtomicAmbiCore :: (ElModeSpec m) => ElParser (ElAmbiCore m)
 parseAtomicAmbiCore = AmVar <$> parseLowerId <|> parened parseAmbiCore
 
 parseKind :: (ElModeSpec m) => ElParser (ElKind m)
-parseKind = liftA2 (foldr ($)) parseAtomicKind (many (keyword "Up" $> flip KiUp [] <*> parseMode)) <?> "kind"
+parseKind = liftA2 (foldr ($)) parseAtomicKind (many (keyword "Up" $> flip KiUp Seq.empty <*> parseMode)) <?> "kind"
 
 parseAtomicKind :: (ElModeSpec m) => ElParser (ElKind m)
 parseAtomicKind =
@@ -288,12 +297,15 @@ parseType =
     (flip (foldr ($)))
     (many (try (parseArgSpec <* symbol "->")))
     parseProdType
+  <**> parsePostAnn
   <?> "type"
   where
     parseArgSpec =
       try (parened (liftA2 TyForall parseLowerId (symbol ":" *> parseKind)))
       <|> TyArr <$> parseProdType
       <?> "argument type"
+
+    parsePostAnn = option id (symbol ":" $> flip TyAnn <*> parseKind <?> "kind annotation")
 
 parseProdType :: (ElModeSpec m) => ElParser (ElType m)
 parseProdType = do
@@ -318,7 +330,7 @@ parsePostType =
   where
     parsePostOp =
       choice
-        [ keyword "Up" $> flip TyUp [] <*> parseMode <?> "Upshift of the type"
+        [ keyword "Up" $> flip TyUp Seq.empty <*> parseMode <?> "Upshift of the type"
         , keyword "Down" $> TyDown <*> parseMode <?> "Downshift of the type"
         , flip (TyData . pure) <$> parseUpperId <?> "type constructor"
         ]
@@ -354,31 +366,34 @@ parseContextualUpCommon cons p = bracketed parseContextualCommon <*> (keyword "U
 parseSuspCommon :: (ElModeSpec m) => (ElContextHat m -> f m -> f m) -> ElParser (f m) -> ElParser (f m) -> ElParser (f m)
 parseSuspCommon cons ap p = keyword "susp" *> parseOpenItem
   where
-    parseOpenItem = cons [] <$> try ap <|> parened (liftA2 cons parseContextHat (symbol "." *> p))
+    parseOpenItem = cons Seq.empty <$> try ap <|> parened (liftA2 cons parseContextHat (symbol "." *> p))
 
 parseForceCommon :: (ElModeSpec m) => (f m -> ElSubst m -> f m) -> ElParser (f m) -> ElParser (f m)
-parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option [] (symbol "with" *> parseSubst))
+parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Seq.empty (symbol "with" *> parseSubst))
 
 parseContext :: (ElModeSpec m) => ElParser (ElContext m)
-parseContext =
-  symbol "." *> many (symbol "," *> parseContextItem)
-  <|> sepBy1 parseContextItem (symbol ",")
-  <?> "context"
+parseContext = Seq.fromList <$> impl <?> "context"
   where
+    impl =
+      symbol "." *> many (symbol "," *> parseContextItem)
+      <|> sepBy1 parseContextItem (symbol ",")
+
     parseContextItem = liftA2 (,) parseLowerId (symbol ":" *> parseContextEntry)
 
 parseContextEntry :: (ElModeSpec m) => ElParser (ElContextEntry m)
 parseContextEntry =
-  try (EntryOfKi <$> parseKind)
-  <|> EntryOfTy <$> parseType
+  try (CEKind <$> parseKind)
+  <|> CEType <$> parseType
 
 parseContextHat :: ElParser (ElContextHat m)
-parseContextHat =
-  symbol "." *> many (symbol "," *> parseLowerId)
-  <|> sepBy1 parseLowerId (symbol ",")
+parseContextHat = Seq.fromList <$> impl
+  where
+    impl =
+      symbol "." *> many (symbol "," *> parseLowerId)
+      <|> sepBy1 parseLowerId (symbol ",")
 
 parseSubst :: (ElModeSpec m) => ElParser (ElSubst m)
-parseSubst = parened (sepBy parseTerm (symbol ","))
+parseSubst = fmap Seq.fromList . parened $ sepBy (SEAmbi <$> parseAmbi) (symbol ",")
 
 parseMode :: (ElModeSpec m) => ElParser m
 parseMode = impl <?> "mode"

@@ -1,4 +1,4 @@
-{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE DerivingVia  #-}
 {-# LANGUAGE TypeFamilies #-}
 module Elevator.Syntax
   ( ElId
@@ -24,6 +24,9 @@ module Elevator.Syntax
   , ElContextHat
   , ElIContextHat
 
+  , putHat
+  , putIHat
+
   , ElTerm(..)
   , ElITerm(..)
 
@@ -36,6 +39,8 @@ module Elevator.Syntax
 
   , ElSubst
   , ElISubst
+  , ElSubstEntry(..)
+  , ElISubstEntry(..)
 
   , ElAmbi(..)
   , ElAmbiCore(..)
@@ -46,6 +51,7 @@ module Elevator.Syntax
   ) where
 
 import Data.Hashable (Hashable)
+import Data.Sequence (Seq)
 import Data.String   (IsString)
 import Data.Text     (Text)
 import Prettyprinter (Pretty)
@@ -68,13 +74,13 @@ data ElCommand m
   deriving stock (Eq, Show)
 
 data ElTop m
-  = TopTmDef ElId (ElType m) (ElTerm m)
-  | TopTyDef [ElId] ElId m [(ElId, [ElType m])]
+  = TopTermDef ElId (ElType m) (ElTerm m)
+  | TopTypeDef [ElId] ElId m [(ElId, [ElType m])]
   deriving stock (Eq, Show)
 
 data ElITop m
-  = TopITmDef ElId (ElIType m) (ElITerm m)
-  | TopITyDef [ElId] ElId m [(ElId, [ElIType m])]
+  = TopITermDef ElId (ElIType m) (ElITerm m)
+  | TopITypeDef [ElId] ElId m [(ElId, [ElIType m])]
   deriving stock (Eq, Show)
 
 data ElKind m
@@ -99,12 +105,13 @@ data ElType m
   | TyDown m (ElType m)
   | TyArr (ElType m) (ElType m)
   | TyForall ElId (ElKind m) (ElType m)
+  | TyAnn (ElType m) (ElKind m)
   deriving stock (Eq, Show)
 
 data ElIType m
   = ITyVar ElId
-  | ITySusp (ElIContextHat m) (ElIType m)
-  | ITyForce (ElIType m) (ElISubst m)
+  | ITySusp m (ElIContextHat m) (ElIType m)
+  | ITyForce m (ElIType m) (ElISubst m)
   | ITyData [ElIType m] ElId
   | ITyBool m
   | ITyInt m
@@ -116,20 +123,26 @@ data ElIType m
   deriving stock (Eq, Show)
 
 data ElContextEntry m
-  = EntryOfKi (ElKind m)
-  | EntryOfTy (ElType m)
+  = CEKind (ElKind m)
+  | CEType (ElType m)
   deriving stock (Eq, Show)
 
 data ElIContextEntry m
-  = IEntryOfKi (ElIKind m)
-  | IEntryOfTy (ElIType m)
+  = ICEKind (ElIKind m)
+  | ICEType (ElIType m)
   deriving stock (Eq, Show)
 
-type ElContext m = [(ElId, ElContextEntry m)]
-type ElIContext m = [(ElId, ElIContextEntry m)]
+type ElContext m = Seq (ElId, ElContextEntry m)
+type ElIContext m = Seq (ElId, m, ElIContextEntry m)
 
-type ElContextHat m = [ElId]
-type ElIContextHat m = ElContextHat m
+type ElContextHat m = Seq ElId
+type ElIContextHat m = Seq (ElId, m)
+
+putHat :: ElContext m -> ElContextHat m
+putHat = fmap fst
+
+putIHat :: ElIContext m -> ElIContextHat m
+putIHat = fmap (\(x, m, _) -> (x, m))
 
 data ElTerm m
   = TmVar ElId
@@ -182,8 +195,17 @@ data ElPattern m
   | PatData ElId [ElPattern m]
   deriving stock (Eq, Show)
 
-type ElSubst m = [ElTerm m]
-type ElISubst m = [ElITerm m]
+newtype ElSubstEntry m
+  = SEAmbi (ElAmbi m)
+  deriving stock (Eq, Show)
+
+data ElISubstEntry m
+  = ISEType (ElIType m)
+  | ISETerm (ElITerm m)
+  deriving stock (Eq, Show)
+
+type ElSubst m = Seq (ElSubstEntry m)
+type ElISubst m = Seq (ElISubstEntry m)
 
 data ElBinOp
   = OpAdd
@@ -225,12 +247,12 @@ data ElAmbiCore m
   deriving stock (Eq, Show)
 
 ambiCore2term :: ElAmbiCore m -> ElTerm m
-ambiCore2term (AmVar x) = TmVar x
+ambiCore2term (AmVar x)       = TmVar x
 ambiCore2term (AmSusp ctxh a) = TmSusp ctxh (ambiCore2term a)
 ambiCore2term (AmForce a sub) = TmForce (ambiCore2term a) sub
 
 ambiCore2type :: ElAmbiCore m -> ElType m
-ambiCore2type (AmVar x) = TyVar x
+ambiCore2type (AmVar x)       = TyVar x
 ambiCore2type (AmSusp ctxh a) = TySusp ctxh (ambiCore2type a)
 ambiCore2type (AmForce a sub) = TyForce (ambiCore2type a) sub
 
@@ -244,32 +266,43 @@ instance FromInternal (ElProgram m) where
 
 instance FromInternal (ElTop m) where
   type Internal (ElTop m) = ElITop m
-  fromInternal (TopITmDef x ty t) = TopTmDef x (fromInternal ty) (fromInternal t)
-  fromInternal (TopITyDef ys x k cons) = TopTyDef ys x k (fmap (fmap (fmap fromInternal)) cons)
+  fromInternal (TopITermDef x ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
+  fromInternal (TopITypeDef ys x k cons) = TopTypeDef ys x k (fmap (fmap (fmap fromInternal)) cons)
+
+icontext2context :: ElIContext m -> ElContext m
+icontext2context = fmap (\(x, _, entry) -> (x, fromInternal entry))
 
 instance FromInternal (ElKind m) where
   type Internal (ElKind m) = ElIKind m
   fromInternal (IKiType k) = KiType k
-  fromInternal (IKiUp k ictx iki) = KiUp k (fmap fromInternal <$> ictx) (fromInternal iki)
+  fromInternal (IKiUp k ictx iki) = KiUp k (icontext2context ictx) (fromInternal iki)
+
+instance FromInternal (ElSubstEntry m) where
+  type Internal (ElSubstEntry m) = ElISubstEntry m
+  fromInternal (ISEType ity) = SEAmbi (AmType (fromInternal ity))
+  fromInternal (ISETerm itm) = SEAmbi (AmTerm (fromInternal itm))
+
+isubst2subst :: ElISubst m -> ElSubst m
+isubst2subst = fmap fromInternal
 
 instance FromInternal (ElType m) where
   type Internal (ElType m) = ElIType m
   fromInternal (ITyVar x) = TyVar x
-  fromInternal (ITySusp ihctx ity) = TySusp ihctx (fromInternal ity)
-  fromInternal (ITyForce ity isub) = TyForce (fromInternal ity) (fromInternal <$> isub)
+  fromInternal (ITySusp _ ihctx ity) = TySusp (fst <$> ihctx) (fromInternal ity)
+  fromInternal (ITyForce _ ity isub) = TyForce (fromInternal ity) (isubst2subst isub)
   fromInternal (ITyData itys x) = TyData (fromInternal <$> itys) x
   fromInternal (ITyBool k) = TyBool k
   fromInternal (ITyInt k) = TyInt k
   fromInternal (ITyProd itys) = TyProd (fromInternal <$> itys)
-  fromInternal (ITyUp k ictx ity) = TyUp k (fmap fromInternal <$> ictx) (fromInternal ity)
+  fromInternal (ITyUp k ictx ity) = TyUp k (icontext2context ictx) (fromInternal ity)
   fromInternal (ITyDown k ity) = TyDown k (fromInternal ity)
   fromInternal (ITyArr ity0 ity1) = TyArr (fromInternal ity0) (fromInternal ity1)
   fromInternal (ITyForall x iki ity) = TyForall x (fromInternal iki) (fromInternal ity)
 
 instance FromInternal (ElContextEntry m) where
   type Internal (ElContextEntry m) = ElIContextEntry m
-  fromInternal (IEntryOfKi iki) = EntryOfKi (fromInternal iki)
-  fromInternal (IEntryOfTy ity) = EntryOfTy (fromInternal ity)
+  fromInternal (ICEKind iki) = CEKind (fromInternal iki)
+  fromInternal (ICEType ity) = CEType (fromInternal ity)
 
 instance FromInternal (ElTerm m) where
   type Internal (ElTerm m) = ElITerm m
@@ -282,10 +315,10 @@ instance FromInternal (ElTerm m) where
   fromInternal (ITmBinOp bop it0 it1) = TmBinOp bop (fromInternal it0) (fromInternal it1)
   fromInternal (ITmTuple its) = TmTuple (fromInternal <$> its)
   fromInternal (ITmMatch _ it ity ibrs) = TmMatch (fromInternal it) (Just (fromInternal ity)) (fmap fromInternal <$> ibrs)
-  fromInternal (ITmSusp _ ihctx it) = TmSusp ihctx (fromInternal it)
-  fromInternal (ITmForce _ it isub) = TmForce (fromInternal it) (fromInternal <$> isub)
+  fromInternal (ITmSusp _ ihctx it) = TmSusp (fst <$> ihctx) (fromInternal it)
+  fromInternal (ITmForce _ it isub) = TmForce (fromInternal it) (isubst2subst isub)
   fromInternal (ITmStore _ it) = TmStore (fromInternal it)
-  fromInternal (ITmLam x ty it) = TmAmbiLam x (Just (EntryOfTy (fromInternal ty))) (fromInternal it)
-  fromInternal (ITmTLam x ki it) = TmAmbiLam (PatVar x) (Just (EntryOfKi (fromInternal ki))) (fromInternal it)
+  fromInternal (ITmLam x ty it) = TmAmbiLam x (Just (CEType (fromInternal ty))) (fromInternal it)
+  fromInternal (ITmTLam x ki it) = TmAmbiLam (PatVar x) (Just (CEKind (fromInternal ki))) (fromInternal it)
   fromInternal (ITmApp it0 it1) = TmAmbiApp (fromInternal it0) (AmTerm (fromInternal it1))
   fromInternal (ITmTApp it0 ity1) = TmAmbiApp (fromInternal it0) (AmType (fromInternal ity1))
