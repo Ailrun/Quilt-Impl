@@ -45,6 +45,7 @@ checkWFOfType (TyVar x)            = do
     ICEType _ -> throwError $ TEInvalidEntryForTypeVariable x ientry
 checkWFOfType (TySusp _ctxh _ty)   = undefined
 checkWFOfType (TyForce _ctxh _ty)  = undefined
+-- TODO: Add kind annotation to type arguments
 checkWFOfType (TyData _tys _x)     = undefined
 checkWFOfType (TyBool k)           = pure (ITyBool k, k)
 checkWFOfType (TyInt k)            = pure (ITyInt k, k)
