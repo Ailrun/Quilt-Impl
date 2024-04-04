@@ -3,7 +3,7 @@ packages:
     ./elevator-lambda-box
     ./elevator-linear
 
-index-state: 2023-10-19T12:38:55Z
+index-state: 2024-04-04T18:06:40Z
 
 package *
   ghc-options: -haddock

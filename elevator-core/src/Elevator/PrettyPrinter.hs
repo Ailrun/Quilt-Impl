@@ -4,7 +4,6 @@
 module Elevator.PrettyPrinter where
 
 import Data.Sequence               (Seq (Empty))
-import Data.Sequence               qualified as Seq
 import Data.String                 (IsString (fromString))
 import Prettyprinter
 import Prettyprinter.Render.String (renderString)
@@ -25,18 +24,24 @@ instance (ElModeSpec m) => Pretty (ElTop m) where
   pretty = prettyTop
 
 prettyTop :: (ElModeSpec m) => ElTop m -> Doc ann
-prettyTop (TopTermDef x ty t) = pretty x <+> colon <+> pretty ty <+> equals <> group (softline <> pretty t)
-prettyTop (TopTypeDef ys x m cons) = "data" <+> parens (prettyContextHat (Seq.fromList ys)) <+> pretty x <> prettyMode m <> group (softline <> equals <+> vsepWith "|" (fmap prettyCon cons))
+prettyTop (TopTermDef x ty t)      = pretty x <+> colon <+> pretty ty <+> equals <> group (softline <> pretty t)
+prettyTop (TopTypeDef ys x m cons) = "data" <+> parens (prettyTyArgs ys) <+> pretty x <> prettyMode m <> group (softline <> equals <+> vsepWith "|" (fmap prettyCon cons))
   where
+    prettyTyArgs = vsepWith comma . fmap prettyTyArg
+    prettyTyArg (y, mayKi) = pretty y <+> prettyKindAnn mayKi
     prettyCon (c, tys) = pretty c <+> "of" <+> prettyProdLike 2 tys
 
 instance (ElModeSpec m) => Pretty (ElKind m) where
   pretty = prettyKind 0
 
 prettyKind :: (ElModeSpec m) => Int -> ElKind m -> Doc ann
-prettyKind _ (KiType k) = "Type" <> prettyMode k
+prettyKind _ (KiType k)        = "Type" <> prettyMode k
 prettyKind p (KiUp k Empty ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
-prettyKind p (KiUp k ctx ki) = parensIf (p > 1) $ brackets (prettyContext ctx <+> turnstile <+> pretty ki) <+> "Up" <> prettyMode k
+prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ brackets (prettyContext ctx <+> turnstile <+> pretty ki) <+> "Up" <> prettyMode k
+
+prettyKindAnn :: (ElModeSpec m) => Maybe (ElKind m) -> Doc ann
+prettyKindAnn (Just ki) = space <> colon <+> pretty ki
+prettyKindAnn Nothing   = emptyDoc
 
 instance (ElModeSpec m) => Pretty (ElType m) where
   pretty = prettyType 0

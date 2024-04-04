@@ -10,6 +10,7 @@ import Data.Functor                       (($>))
 import Data.List                          (foldl')
 import Data.List.NonEmpty                 (NonEmpty (..))
 import Data.List.NonEmpty                 qualified as NE
+import Data.Sequence                      (Seq (Empty))
 import Data.Sequence                      qualified as Seq
 import Data.Text                          (Text)
 import Data.Text                          qualified as T
@@ -23,8 +24,8 @@ import Elevator.Syntax
 
 type ElParser = Parsec Void Text
 
-readEitherCompleteFile :: (ElModeSpec m) => FilePath -> Text -> Either String (ElProgram m)
-readEitherCompleteFile = runCompleteParser parseProgram
+readEitherCompleteFile :: (ElModeSpec m) => FilePath -> Text -> Either String (ElModule m)
+readEitherCompleteFile = runCompleteParser parseModule
 
 readEitherCompleteCommand :: (ElModeSpec m) => FilePath -> Text -> Either String (ElCommand m)
 readEitherCompleteCommand = runCompleteParser parseCommand
@@ -35,8 +36,18 @@ runCompleteParser p fp = first errorBundlePretty . parse (between (hidden MPC.sp
 parseCommand :: (ElModeSpec m) => ElParser (ElCommand m)
 parseCommand = ComTop <$> parseTop <|> ComTerm <$> parseTerm
 
-parseProgram :: (ElModeSpec m) => ElParser (ElProgram m)
-parseProgram = ElProgram <$> many parseTop
+parseModule :: (ElModeSpec m) => ElParser (ElModule m)
+parseModule = liftA2 ElModule (many parseImport) (many parseTop)
+
+parseImport :: ElParser ElModuleId
+parseImport = do
+  keyword "require"
+  modId <- parseModuleId
+  toplevelDelimiter
+  pure modId
+
+parseModuleId :: ElParser ElModuleId
+parseModuleId = ElModuleId <$> sepBy1 parseUpperId (symbol "/")
 
 parseTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTop = parseTyDefTop <|> parseTmDefTop
@@ -46,13 +57,24 @@ parseTyDefTop = impl <?> "top-level type definition"
   where
     impl = do
       keyword "data"
-      ys <- parened (sepBy parseLowerId (symbol "*" <?> "more type constructor arguments separated by \"*\"")) <|> option [] (pure <$> parseLowerId)
+      ys <- parseTyDefArgs
       x <- parseUpperId
       m <- parseMode
       symbol "="
       cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
       toplevelDelimiter
       pure $ TopTypeDef ys x m cs
+
+    parseTyDefArgs =
+      parened (sepBy parseTyDefArg (symbol "*" <?> "more type constructor arguments separated by \"*\""))
+      <|> option [] (pure . (, Nothing) <$> parseLowerId)
+
+    parseTyDefArg =
+      parseOptAnn
+        (, Nothing)
+        (\x -> (x,) . Just)
+        parseLowerId
+        (symbol ":" *> parseKind)
 
 parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTmDefTop = do
@@ -76,7 +98,7 @@ parseTyDefCons =
   <?> "type constructor definition"
 
 parseTerm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseTerm = impl <?> "term"
+parseTerm = parseOptAnn id TmAnn impl (symbol ":" *> parseType <?> "type annotation") <?> "term"
   where
     impl =
       choice
@@ -87,9 +109,6 @@ parseTerm = impl <?> "term"
         , parseIteTerm
         , parseBinOpTerm
         ]
-      <**> parsePostAnn
-
-    parsePostAnn = option id (symbol ":" $> flip TmAnn <*> parseType <?> "type annotation")
 
 parseLamTerm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLamTerm = do
@@ -293,19 +312,20 @@ parseAtomicKind =
 
 parseType :: (ElModeSpec m) => ElParser (ElType m)
 parseType =
-  liftA2
-    (flip (foldr ($)))
-    (many (try (parseArgSpec <* symbol "->")))
-    parseProdType
-  <**> parsePostAnn
+  parseOptAnn
+    id
+    TyAnn
+    (liftA2
+     (flip (foldr ($)))
+     (many (try (parseArgSpec <* symbol "->")))
+     parseProdType)
+    (symbol ":" *> parseKind <?> "kind annotation")
   <?> "type"
   where
     parseArgSpec =
       try (parened (liftA2 TyForall parseLowerId (symbol ":" *> parseKind)))
       <|> TyArr <$> parseProdType
       <?> "argument type"
-
-    parsePostAnn = option id (symbol ":" $> flip TyAnn <*> parseKind <?> "kind annotation")
 
 parseProdType :: (ElModeSpec m) => ElParser (ElType m)
 parseProdType = do
@@ -369,7 +389,7 @@ parseSuspCommon cons ap p = keyword "susp" *> parseOpenItem
     parseOpenItem = cons Seq.empty <$> try ap <|> parened (liftA2 cons parseContextHat (symbol "." *> p))
 
 parseForceCommon :: (ElModeSpec m) => (f m -> ElSubst m -> f m) -> ElParser (f m) -> ElParser (f m)
-parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Seq.empty (symbol "with" *> parseSubst))
+parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Empty (symbol "with" *> parseSubst))
 
 parseContext :: (ElModeSpec m) => ElParser (ElContext m)
 parseContext = Seq.fromList <$> impl <?> "context"
@@ -394,6 +414,9 @@ parseContextHat = Seq.fromList <$> impl
 
 parseSubst :: (ElModeSpec m) => ElParser (ElSubst m)
 parseSubst = fmap Seq.fromList . parened $ sepBy (SEAmbi <$> parseAmbi) (symbol ",")
+
+parseOptAnn :: (a -> c) -> (a -> b -> c) -> ElParser a -> ElParser b -> ElParser c
+parseOptAnn f0 fAnn mainp annp = mainp <**> option f0 (flip fAnn <$> annp)
 
 parseMode :: (ElModeSpec m) => ElParser m
 parseMode = impl <?> "mode"
@@ -441,6 +464,7 @@ keywords =
   , "end"
   , "data"
   , "of"
+  , "require"
   ]
 
 parened :: ElParser a -> ElParser a

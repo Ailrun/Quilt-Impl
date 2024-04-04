@@ -4,8 +4,10 @@ module Elevator.Syntax
   ( ElId
   , elId
 
-  , ElProgram(..)
-  , ElIProgram(..)
+  , ElModuleId(..)
+
+  , ElModule(..)
+  , ElIModule(..)
 
   , ElCommand(..)
 
@@ -62,36 +64,39 @@ newtype ElId = ElId Text
 elId :: Text -> ElId
 elId = ElId
 
-newtype ElProgram m = ElProgram [ElTop m]
-  deriving stock (Eq, Show)
+newtype ElModuleId = ElModuleId [ElId]
+  deriving (Eq, Ord, Show) via [ElId]
 
-newtype ElIProgram m = ElIProgram [ElITop m]
-  deriving stock (Eq, Show)
+data ElModule m = ElModule [ElModuleId] [ElTop m]
+  deriving stock (Eq, Ord, Show)
+
+data ElIModule m = ElIModule [ElModuleId] [ElITop m]
+  deriving stock (Eq, Ord, Show)
 
 data ElCommand m
   = ComTop (ElTop m)
   | ComTerm (ElTerm m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElTop m
   = TopTermDef ElId (ElType m) (ElTerm m)
-  | TopTypeDef [ElId] ElId m [(ElId, [ElType m])]
-  deriving stock (Eq, Show)
+  | TopTypeDef [(ElId, Maybe (ElKind m))] ElId m [(ElId, [ElType m])]
+  deriving stock (Eq, Ord, Show)
 
 data ElITop m
-  = TopITermDef ElId (ElIType m) (ElITerm m)
-  | TopITypeDef [ElId] ElId m [(ElId, [ElIType m])]
-  deriving stock (Eq, Show)
+  = ITopTermDef ElId (ElIType m) (ElITerm m)
+  | ITopTypeDef [(ElId, ElIKind m)] ElId m [(ElId, [ElIType m])]
+  deriving stock (Eq, Ord, Show)
 
 data ElKind m
   = KiType m
   | KiUp m (ElContext m) (ElKind m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElIKind m
   = IKiType m
   | IKiUp m (ElIContext m) (ElIKind m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElType m
   = TyVar ElId
@@ -106,7 +111,7 @@ data ElType m
   | TyArr (ElType m) (ElType m)
   | TyForall ElId (ElKind m) (ElType m)
   | TyAnn (ElType m) (ElKind m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElIType m
   = ITyVar ElId
@@ -120,17 +125,17 @@ data ElIType m
   | ITyDown m (ElIType m)
   | ITyArr (ElIType m) (ElIType m)
   | ITyForall ElId (ElIKind m) (ElIType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElContextEntry m
   = CEKind (ElKind m)
   | CEType (ElType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElIContextEntry m
   = ICEKind (ElIKind m)
   | ICEType (ElIType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 type ElContext m = Seq (ElId, ElContextEntry m)
 type ElIContext m = Seq (ElId, m, ElIContextEntry m)
@@ -160,7 +165,7 @@ data ElTerm m
   | TmAmbiLam (ElPattern m) (Maybe (ElContextEntry m)) (ElTerm m)
   | TmAmbiApp (ElTerm m) (ElAmbi m)
   | TmAnn (ElTerm m) (ElType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElITerm m
   = ITmVar ElId
@@ -179,7 +184,7 @@ data ElITerm m
   | ITmTLam ElId (ElIKind m) (ElITerm m)
   | ITmApp (ElITerm m) (ElITerm m)
   | ITmTApp (ElITerm m) (ElIType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 type ElBranch m = (ElPattern m, ElTerm m)
 type ElIBranch m = (ElPattern m, ElITerm m)
@@ -193,16 +198,16 @@ data ElPattern m
   | PatTuple [ElPattern m]
   | PatLoad (ElPattern m)
   | PatData ElId [ElPattern m]
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 newtype ElSubstEntry m
   = SEAmbi (ElAmbi m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElISubstEntry m
   = ISEType (ElIType m)
   | ISETerm (ElITerm m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 type ElSubst m = Seq (ElSubstEntry m)
 type ElISubst m = Seq (ElISubstEntry m)
@@ -238,13 +243,13 @@ data ElAmbi m
   = AmCore (ElAmbiCore m)
   | AmTerm (ElTerm m)
   | AmType (ElType m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 data ElAmbiCore m
   = AmVar ElId
   | AmSusp (ElContextHat m) (ElAmbiCore m)
   | AmForce (ElAmbiCore m) (ElSubst m)
-  deriving stock (Eq, Show)
+  deriving stock (Eq, Ord, Show)
 
 ambiCore2term :: ElAmbiCore m -> ElTerm m
 ambiCore2term (AmVar x)       = TmVar x
@@ -260,14 +265,14 @@ class FromInternal a where
   type Internal a
   fromInternal :: Internal a -> a
 
-instance FromInternal (ElProgram m) where
-  type Internal (ElProgram m) = ElIProgram m
-  fromInternal (ElIProgram tops) = ElProgram (fromInternal <$> tops)
+instance FromInternal (ElModule m) where
+  type Internal (ElModule m) = ElIModule m
+  fromInternal (ElIModule imports tops) = ElModule imports (fromInternal <$> tops)
 
 instance FromInternal (ElTop m) where
   type Internal (ElTop m) = ElITop m
-  fromInternal (TopITermDef x ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
-  fromInternal (TopITypeDef ys x k cons) = TopTypeDef ys x k (fmap (fmap (fmap fromInternal)) cons)
+  fromInternal (ITopTermDef x ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
+  fromInternal (ITopTypeDef ys x k cons) = TopTypeDef (fmap (Just . fromInternal) <$> ys) x k (fmap (fmap (fmap fromInternal)) cons)
 
 icontext2context :: ElIContext m -> ElContext m
 icontext2context = fmap (\(x, _, entry) -> (x, fromInternal entry))
