@@ -57,13 +57,13 @@ parseTyDefTop = impl <?> "top-level type definition"
   where
     impl = do
       keyword "data"
-      ys <- parseTyDefArgs
+      args <- parseTyDefArgs
       x <- parseUpperId
       m <- parseMode
       symbol "="
       cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
       toplevelDelimiter
-      pure $ TopTypeDef ys x m cs
+      pure $ TopTypeDef args x m cs
 
     parseTyDefArgs =
       parened (sepBy parseTyDefArg (symbol "*" <?> "more type constructor arguments separated by \"*\""))
