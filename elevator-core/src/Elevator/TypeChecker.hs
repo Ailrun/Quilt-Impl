@@ -28,7 +28,7 @@ checkModule (ElModule [] tops) = do
   underEnv (typeEnv <> termEnv) $ ElIModule [] <$> traverse checkAnnTop annTops
 checkModule (ElModule _ _)     = throwError $ TENotYetSupported "module dependence"
 
-buildTypeEnv :: (ElModeSpec m) => [ElTop m] -> ElCheckM m (ElTypingEnv m, [ElPostTypeEnvTop m])
+buildTypeEnv :: (ElModeSpec m) => [ElTop m] -> ElCheckM m (ElTypingEnvironment m, [ElPostTypeEnvTop m])
 buildTypeEnv = mapAccumM buildForTop mempty
   where
     buildForTop env (TopTermDef x ty t)        = pure (env, PTETopTermDef x ty t)
@@ -36,22 +36,22 @@ buildTypeEnv = mapAccumM buildForTop mempty
       whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
       iargs <- forM args $ \(y, yki) ->
         (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
-      let env' = env <> ElTypingEnv (Seq.singleton (x, k, TEETypeDecl iargs))
+      let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))
       pure (env', PTETopTypeDef iargs x k cons)
 
-buildTermEnv :: (ElModeSpec m) => [ElPostTypeEnvTop m] -> ElCheckM m (ElTypingEnv m, [ElPostEnvTop m])
+buildTermEnv :: (ElModeSpec m) => [ElPostTypeEnvTop m] -> ElCheckM m (ElTypingEnvironment m, [ElPostEnvTop m])
 buildTermEnv = mapAccumM buildForMayAnnTop mempty
   where
     buildForMayAnnTop env (PTETopTypeDef iargs x k cons) = do
       forM_ cons $ \(c, _) ->
         whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName c
       icons <- checkCons iargs cons
-      let env' = env <> ElTypingEnv (Seq.fromList (fmap (\(c, itys) -> (c, k, TEEConDecl (fst <$> iargs) itys x)) icons))
+      let env' = env <> ElTypingEnvironment (Seq.fromList (fmap (\(c, itys) -> (c, k, TEEConDecl (fst <$> iargs) itys x)) icons))
       pure (env', PETopTypeDef iargs x k icons)
     buildForMayAnnTop env (PTETopTermDef x ty t)         = do
       whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
       (ity, k) <- checkWFOfType ty
-      let env' = env <> ElTypingEnv (Seq.singleton (x, k, TEETermDecl ity))
+      let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
       pure (env', PETopTermDef x ity t)
 
 checkAnnTop :: (ElModeSpec m) => ElPostEnvTop m -> ElCheckM m (ElITop m)
@@ -235,7 +235,7 @@ checkContextWeakening :: (ElModeSpec m) => ElIContext m -> ElCheckM m ()
 checkContextWeakening ictx0 = do
   unless (Seq.length ictx0 == Set.size (Set.fromList (fst3 <$> toList ictx0))) $ throwError $ TEDuplicatedContextEntryInWeakening ictx0
   forM_ ictx0 $ \(x, k, entry) -> do
-    (k', entry') <- getFromIctx x
+    (k', entry') <- getFromCheckingIctx x
     testIsSameMode k k'
     unifyIContextEntry entry entry'
 
@@ -457,11 +457,25 @@ testIsWkMode k = unless (modeSt k MdStWk) $ throwError $ TEModeStructuralRule Md
 --   pure (usage, it)
 
 ------------------------------------------------------------
--- Type-level functions
+-- Substitution functions
 ------------------------------------------------------------
+-- This should be a capture-avoiding substitution
 
 applyTypeSubst :: (ElModeSpec m) => ElIType m -> ElISubst m -> ElIContext m -> ElIType m
 applyTypeSubst = undefined
+-- applyTypeSubst (ITyVar x) isub ictx
+--   | Just (_, ISEType ity, _) <- lookupFromSubIctx isub ictx x = ity
+--   | otherwise                                                 = ITyVar x
+-- applyTypeSubst (ITySusp k ictxh' ity) isub ictx = undefined
+-- applyTypeSubst (ITyForce k ity isub') isub ictx = undefined
+-- applyTypeSubst (ITyData [ElIType m] ElId) = undefined
+-- applyTypeSubst (ITyBool m) = undefined
+-- applyTypeSubst (ITyInt m) = undefined
+-- applyTypeSubst (ITyProd [ElIType m]) = undefined
+-- applyTypeSubst (ITyUp m (ElIContext m) (ElIType m)) = undefined
+-- applyTypeSubst (ITyDown m (ElIType m)) = undefined
+-- applyTypeSubst (ITyArr (ElIType m) (ElIType m)) = undefined
+-- applyTypeSubst (ITyForall ElId (ElIKind m) (ElIType m)) = undefined
 
 ------------------------------------------------------------
 -- Type checker monad
@@ -470,7 +484,7 @@ applyTypeSubst = undefined
 -- Constraints should be added as a state once we add them
 newtype ElCheckM m a
   = ElCheckM
-    { runElCheckM :: ElTypingEnv m -> ElIContext m -> Either (ElTypingError m) (ElContextUsage m, a)
+    { runElCheckM :: ElTypingEnvironment m -> ElIContext m -> Either (ElTypingError m) (ElContextUsage m, a)
     }
   deriving stock (Functor)
 
@@ -501,7 +515,7 @@ instance (ElModeSpec m) => MonadError (ElTypingError m) (ElCheckM m) where
 
 getTypeAndUse :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIKind m)
 getTypeAndUse x = do
-  (m, ientry) <- getFromIctx x
+  (m, ientry) <- getFromCheckingIctx x
   case ientry of
     ICEKind iki -> do
       useTypeVariable x m
@@ -512,26 +526,44 @@ getTermAndUse :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIType m)
 getTermAndUse x = catchError inIctx $ const (getTermDecl x)
   where
     inIctx = do
-      (m, ientry) <- getFromIctx x
+      (m, ientry) <- getFromCheckingIctx x
       case ientry of
         ICEType ity -> do
           useTermVariable x m
           pure (m, ity)
         ICEKind _ -> throwError $ TEVariableClassMismatch x
 
-getFromIctx :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIContextEntry m)
-getFromIctx x = do
-  ictx <- ask
-  let mayI = Seq.findIndexR (\(x', _, _) -> x == x') ictx
-  case mayI of
+getFromIctx :: (MonadError (ElTypingError m) em, ElModeSpec m) => ElIContext m -> ElId -> em (m, ElIContextEntry m)
+getFromIctx ictx x =
+  case Seq.findIndexR (\(x', _, _) -> x == x') ictx of
     Just i  -> let (_, m, ientry) = ictx `Seq.index` i in pure (m, ientry)
     Nothing -> throwError $ TENotInScope x
+
+getFromCheckingIctx :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIContextEntry m)
+getFromCheckingIctx x = do
+  ictx <- ask
+  getFromIctx ictx x
+
+lookupFromSubIctx :: (ElModeSpec m) => ElISubst m -> ElIContext m -> ElId -> Maybe (m, ElISubstEntry m, ElIContextEntry m)
+lookupFromSubIctx isub ictx x =
+  case Seq.findIndexR (\(x', _, _) -> x == x') ictx of
+    Just i  ->
+      let
+        (_, m, ientry) = ictx `Seq.index` i
+      in
+      case isub Seq.!? i of
+        Just it  -> Just (m, it, ientry)
+        Nothing -> Just (m, iSubEntryOfIContextEntry ientry, ientry)
+    Nothing -> Nothing
+  where
+    iSubEntryOfIContextEntry (ICEKind _) = ISEType (ITyVar x)
+    iSubEntryOfIContextEntry (ICEType _) = ISETerm (ITmVar x)
 
 ------------------------------------------------------------
 -- Top-level based environment for the type checker
 ------------------------------------------------------------
 
-data ElTypingEnvEntry m
+data ElTypingEnvironmentEntry m
   = TEETypeDecl [(ElId, ElIKind m)]
   | TEEConDecl [ElId] [ElIType m] ElId
   | TEETermDecl (ElIType m)
@@ -547,82 +579,89 @@ data ElPostEnvTop m
   | PETopTypeDef [(ElId, ElIKind m)] ElId m [(ElId, [ElIType m])]
   deriving stock (Eq, Ord, Show)
 
-newtype ElTypingEnv m
-  = ElTypingEnv
-    { getElTypingEnv :: Seq (ElId, m, ElTypingEnvEntry m)
+newtype ElTypingEnvironment m
+  = ElTypingEnvironment
+    { getElTypingEnvironment :: Seq (ElId, m, ElTypingEnvironmentEntry m)
     }
-  deriving (Eq, Ord, Semigroup, Monoid) via (Seq (ElId, m, ElTypingEnvEntry m))
+  deriving (Eq, Ord, Semigroup, Monoid) via (Seq (ElId, m, ElTypingEnvironmentEntry m))
 
-askEnv :: (ElModeSpec m) => ElCheckM m (ElTypingEnv m)
+askEnv :: (ElModeSpec m) => ElCheckM m (ElTypingEnvironment m)
 askEnv = ElCheckM $ (pure .) . const . (UEmpty,)
 
-underEnv :: (ElModeSpec m) => ElTypingEnv m -> ElCheckM m a -> ElCheckM m a
+underEnv :: (ElModeSpec m) => ElTypingEnvironment m -> ElCheckM m a -> ElCheckM m a
 underEnv env am = ElCheckM $ const $ runElCheckM am env
 
 ------------------------------------------------------------
 -- NOTE: Env does not have the concept of "use"
+-- Or should it be? Polynomial time computation may need such
+-- a concept
 
--- throwError $ TENotInScope x
-
-lookupEnvWithMapper :: (ElModeSpec m) => ElId -> (ElTypingEnvEntry m -> Maybe a) -> ElCheckM m (Maybe (m, a))
-lookupEnvWithMapper x f = do
-  env <- askEnv
-  let mayI = Seq.findIndexR cond $ getElTypingEnv env
-  case mayI of
-    Nothing -> pure Nothing
+lookupEnvWithMapper :: (ElModeSpec m) => ElTypingEnvironment m -> ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> Maybe (m, a)
+lookupEnvWithMapper env x f =
+  case Seq.findIndexR cond $ getElTypingEnvironment env of
+    Nothing -> Nothing
     Just i  ->
       let
-        (_, k, eentry) = getElTypingEnv env `Seq.index` i
+        (_, k, eentry) = getElTypingEnvironment env `Seq.index` i
       in
       case f eentry of
-        Just a -> pure $ Just (k, a)
-        _      -> throwError $ TEImplementationError $ "line " <> show (__LINE__ :: Int) <> " in " <> __FILE__
+        Just a -> Just (k, a)
+        _      -> error $ "line " <> show (__LINE__ :: Int) <> " in " <> __FILE__
   where
     cond (x', _, eentry)
       | Just _ <- f eentry = x == x'
       | otherwise          = False
 
+lookupTypingEnvWithMapper :: (ElModeSpec m) => ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> ElCheckM m (Maybe (m, a))
+lookupTypingEnvWithMapper x f = do
+  env <- askEnv
+  pure $ lookupEnvWithMapper env x f
+
 lookupTypeDecl :: (ElModeSpec m) => ElId -> ElCheckM m (Maybe (m, [(ElId, ElIKind m)]))
-lookupTypeDecl x = lookupEnvWithMapper x f
+lookupTypeDecl x = lookupTypingEnvWithMapper x f
   where
     f (TEETypeDecl args) = Just args
     f _                  = Nothing
 
 lookupConDecl :: (ElModeSpec m) => ElId -> ElId -> ElCheckM m (Maybe (m, ([ElId], [ElIType m])))
-lookupConDecl x c = lookupEnvWithMapper c f
+lookupConDecl x c = lookupTypingEnvWithMapper c f
   where
     f (TEEConDecl iys itys x')
       | x == x'              = Just (iys, itys)
     f _                      = Nothing
 
 lookupTermDecl :: (ElModeSpec m) => ElId -> ElCheckM m (Maybe (m, ElIType m))
-lookupTermDecl x = lookupEnvWithMapper x f
+lookupTermDecl x = lookupTypingEnvWithMapper x f
   where
     f (TEETermDecl ity) = Just ity
     f _                 = Nothing
 
-getFromEnvWithMapper :: (ElModeSpec m) => ElId -> (ElTypingEnvEntry m -> Maybe a) -> ElCheckM m (m, a)
-getFromEnvWithMapper x f = do
-  mayRes <- lookupEnvWithMapper x f
-  case mayRes of
+getFromEnvWithMapper :: (MonadError (ElTypingError m) em, ElModeSpec m) => ElTypingEnvironment m -> ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> em (m, a)
+getFromEnvWithMapper env x f =
+  case lookupEnvWithMapper env x f of
     Nothing  -> throwError $ TENotInScope x
     Just res -> pure res
 
+getFromTypingEnvWithMapper :: (ElModeSpec m) => ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> ElCheckM m (m, a)
+getFromTypingEnvWithMapper x f = do
+  env <- askEnv
+  getFromEnvWithMapper env x f
+
 getTypeDecl :: (ElModeSpec m) => ElId -> ElCheckM m (m, [(ElId, ElIKind m)])
-getTypeDecl x = getFromEnvWithMapper x f
+getTypeDecl x = getFromTypingEnvWithMapper x f
   where
     f (TEETypeDecl args) = Just args
     f _                  = Nothing
 
 getConDecl :: (ElModeSpec m) => ElId -> ElId -> ElCheckM m (m, ([ElId], [ElIType m]))
-getConDecl x c = getFromEnvWithMapper c f
+getConDecl x c = getFromTypingEnvWithMapper c f
   where
     f (TEEConDecl iys itys x')
       | x == x'              = Just (iys, itys)
     f _                      = Nothing
 
 getTermDecl :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIType m)
-getTermDecl x = getFromEnvWithMapper x f
+getTermDecl x = getFromTypingEnvWithMapper x f
   where
     f (TEETermDecl ity) = Just ity
     f _                 = Nothing
