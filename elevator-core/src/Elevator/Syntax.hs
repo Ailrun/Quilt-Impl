@@ -90,11 +90,13 @@ data ElITop m
 
 data ElKind m
   = KiType m
+  -- | "m" is the mode of the scrutinee
   | KiUp m (ElContext m) (ElKind m)
   deriving stock (Eq, Ord, Show)
 
 data ElIKind m
   = IKiType m
+  -- | "m" is the destination mode
   | IKiUp m (ElIContext m) (ElIKind m)
   deriving stock (Eq, Ord, Show)
 
@@ -106,7 +108,9 @@ data ElType m
   | TyBool m
   | TyInt m
   | TyProd [ElType m]
+  -- | "m" is the destination mode
   | TyUp m (ElContext m) (ElType m)
+  -- | "m" is the destination mode
   | TyDown m (ElType m)
   | TyArr (ElType m) (ElType m)
   | TyForall ElId (ElKind m) (ElType m)
@@ -115,13 +119,17 @@ data ElType m
 
 data ElIType m
   = ITyVar ElId
+  -- | "m" is the destination mode
   | ITySusp m (ElIContextHat m) (ElIType m)
+  -- | "m" is the destination mode
   | ITyForce m (ElIType m) (ElISubst m)
   | ITyData [ElIType m] ElId
   | ITyBool m
   | ITyInt m
   | ITyProd [ElIType m]
+  -- | "m" is the destination mode
   | ITyUp m (ElIContext m) (ElIType m)
+  -- | "m" is the destination mode
   | ITyDown m (ElIType m)
   | ITyArr (ElIType m) (ElIType m)
   | ITyForall ElId (ElIKind m) (ElIType m)
@@ -176,9 +184,13 @@ data ElITerm m
   | ITmInt Integer
   | ITmBinOp ElBinOp (ElITerm m) (ElITerm m)
   | ITmTuple [ElITerm m]
+  -- | "m" is the mode of the scrutinee
   | ITmMatch m (ElITerm m) (ElIType m) [ElIBranch m]
+  -- | "m" is the destination mode
   | ITmSusp m (ElIContextHat m) (ElITerm m)
+  -- | "m" is the destination mode
   | ITmForce m (ElITerm m) (ElISubst m)
+  -- | "m" is the destination mode
   | ITmStore m (ElITerm m)
   | ITmLam (ElPattern m) (ElIType m) (ElITerm m)
   | ITmTLam ElId (ElIKind m) (ElITerm m)
