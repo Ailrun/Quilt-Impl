@@ -64,8 +64,14 @@ checkCons iargs = traverse checkCon
     checkCon (c, argTys) = (c,) <$> traverse (local (<> iargsctx) . checkWFOfType_) argTys
     iargsctx = Seq.fromList ((\(y, yiki) -> (y, getModeOfIKind yiki, ICEKind yiki)) <$> iargs)
 
-checkWFOfKind_ :: (ElModeSpec m) => ElKind m -> ElCheckM m (ElIKind m)
-checkWFOfKind_ = fmap fst . checkWFOfKind
+------------------------------------------------------------
+-- "checkWFOfKind", "checkWFOfKind_",
+-- "checkWFOfType", "checkWFOfType_",
+-- "checkWFOfContext", ...
+-- all should give a "normalized" kind/type/context/... as the result.
+-- Note that "checkContext" (that checks a substitution against a context)
+-- normalizes only the type part so that we can avoid unnecessary computations
+-- and guarantee the termination of type checking.
 
 checkWFOfKind :: (ElModeSpec m) => ElKind m -> ElCheckM m (ElIKind m, m)
 checkWFOfKind (KiType k)          = pure (IKiType k, k)
@@ -76,6 +82,9 @@ checkWFOfKind ki@(KiUp k ctx ki') = do
   withError (TEFor $ TETKind ki) $ checkRangeOfContext (Just l) (Just k) ictx
   pure (IKiUp k ictx iki', k)
 
+checkWFOfKind_ :: (ElModeSpec m) => ElKind m -> ElCheckM m (ElIKind m)
+checkWFOfKind_ = fmap fst . checkWFOfKind
+
 getModeOfIKind :: (ElModeSpec m) => ElIKind m -> m
 getModeOfIKind (IKiType k)   = k
 getModeOfIKind (IKiUp k _ _) = k
@@ -83,9 +92,6 @@ getModeOfIKind (IKiUp k _ _) = k
 testIsKindType :: (ElModeSpec m) => ElIKind m -> ElCheckM m m
 testIsKindType (IKiType k) = pure k
 testIsKindType iki         = throwError (TEInvalidKind iki)
-
-checkWFOfType_ :: (ElModeSpec m) => ElType m -> ElCheckM m (ElIType m)
-checkWFOfType_ = fmap fst . checkWFOfType
 
 checkWFOfType :: (ElModeSpec m) => ElType m -> ElCheckM m (ElIType m, m)
 checkWFOfType (TyBool k)           = pure (ITyBool k, k)
@@ -129,6 +135,9 @@ checkWFOfType ty                   = do
   (ity, iki') <- inferKind ty
   (ity,) <$> testIsKindType iki'
 
+checkWFOfType_ :: (ElModeSpec m) => ElType m -> ElCheckM m (ElIType m)
+checkWFOfType_ = fmap fst . checkWFOfType
+
 checkKind :: (ElModeSpec m) => ElIKind m -> ElType m -> ElCheckM m (ElIType m)
 checkKind iki (TySusp ctxh ty)
   | IKiUp m ictx iki' <- iki   = do
@@ -155,9 +164,12 @@ inferKind (TyVar x)            = (ITyVar x,) . snd <$> getTypeAndUse x
 inferKind (TyForce ty sub)     = do
   (ity, iki) <- checkContextUsageGEBy (getModeOfIKind . snd) $ inferKind ty
   case iki of
-    IKiUp m ictx iki' -> do
+    IKiUp _ ictx iki' -> do
       isub <- checkContext ictx sub
-      pure (ITyForce m ity isub, iki')
+      let k = getModeOfIKind iki'
+      case ity of
+        ITySusp _ _ ity' -> pure (applyTypeSubst ity' isub ictx, iki')
+        _                -> pure (ITyForce k ity isub, iki')
     _                 -> throwError $ TEInvalidKindForForce iki
 inferKind (TyAnn ty ki)        = do
   iki <- checkWFOfKind_ ki
@@ -445,7 +457,7 @@ testIsWkMode k = unless (modeSt k MdStWk) $ throwError $ TEModeStructuralRule Md
 --   pure (usage, it)
 
 ------------------------------------------------------------
--- Utility functions
+-- Type-level functions
 ------------------------------------------------------------
 
 applyTypeSubst :: (ElModeSpec m) => ElIType m -> ElISubst m -> ElIContext m -> ElIType m
@@ -694,30 +706,15 @@ useTermVariable x m = useVariables (UEmpty :+? (x, m))
 ------------------------------------------------------------
 -- Equality checking / Unification
 ------------------------------------------------------------
+-- As internal type/kind generators (i.e. well-formedness checkers)
+-- always generate "normal" type/kinds, we can use
+-- syntactic equality to check whether two types/kinds are equal.
 
 unifyIKind :: (ElModeSpec m) => ElIKind m -> ElIKind m -> ElCheckM m ()
-unifyIKind iki0@(IKiType k0)      iki1@(IKiType k1)      = withError (TEFor $ TETIKindUnification iki0 iki1) $ testIsSameMode k0 k1
-unifyIKind (IKiUp k0 ictx0 iki0') (IKiUp k1 ictx1 iki1') = do
-  testIsSameMode k0 k1
-  unifyIContext ictx0 ictx1
-  unifyIKind iki0' iki1'
-unifyIKind iki0                   iki1                   = throwError $ TEUnunifiableIKinds iki0 iki1
+unifyIKind iki0 iki1 = unless (iki0 == iki1) $ throwError $ TEUnunifiableIKinds iki0 iki1
 
--- This should compare normal forms of "ity0" and "ity1";
--- they can contain redices because of "susp" and "force"!
 unifyIType :: (ElModeSpec m) => ElIType m -> ElIType m -> ElCheckM m ()
-unifyIType _ity0 _ity1 = undefined
-
-unifyIContext :: (ElModeSpec m) => ElIContext m -> ElIContext m -> ElCheckM m ()
-unifyIContext ictx0 ictx1 = do
-  unless (length ictx0 == length ictx1) $ throwError $ TEUnunifiableIContexts ictx0 ictx1
-  withError (TEFor $ TETIContextUnification ictx0 ictx1) $ traverse_ (uncurry helper) $ Seq.zip ictx0 ictx1
-  where
-    helper :: (ElModeSpec m) => (ElId, m, ElIContextEntry m) -> (ElId, m, ElIContextEntry m) -> ElCheckM m ()
-    helper (x0, m0, entry0) (x1, m1, entry1) = do
-      unless (x0 == x1) $ throwError $ TEIdentifierMismatch x0 x1
-      testIsSameMode m0 m1
-      unifyIContextEntry entry0 entry1
+unifyIType ity0 ity1 = unless (ity0 == ity1) $ throwError $ TEUnunifiableITypes ity0 ity1
 
 unifyIContextEntry :: (ElModeSpec m) => ElIContextEntry m -> ElIContextEntry m -> ElCheckM m ()
 unifyIContextEntry (ICEKind iki0) (ICEKind iki1) = unifyIKind iki0 iki1
