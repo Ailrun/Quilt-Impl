@@ -50,6 +50,9 @@ module Elevator.Syntax
   , ambiCore2type
 
   , FromInternal(..)
+  , icontext2context
+  , icontextHat2contextHat
+  , isubst2subst
   ) where
 
 import Data.Hashable (Hashable)
@@ -59,7 +62,7 @@ import Data.Text     (Text)
 import Prettyprinter (Pretty)
 
 newtype ElId = ElId Text
-  deriving (Hashable, Eq, Ord, Show, IsString, Pretty) via Text
+  deriving (Hashable, Eq, Ord, Show, Semigroup, IsString, Pretty) via Text
 
 elId :: Text -> ElId
 elId = ElId
@@ -84,7 +87,7 @@ data ElTop m
   deriving stock (Eq, Ord, Show)
 
 data ElITop m
-  = ITopTermDef ElId (ElIType m) (ElITerm m)
+  = ITopTermDef ElId m (ElIType m) (ElITerm m)
   | ITopTypeDef [(ElId, ElIKind m)] ElId m [(ElId, [ElIType m])]
   deriving stock (Eq, Ord, Show)
 
@@ -108,9 +111,9 @@ data ElType m
   | TyBool m
   | TyInt m
   | TyProd [ElType m]
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire type
   | TyUp m (ElContext m) (ElType m)
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire type
   | TyDown m (ElType m)
   | TyArr (ElType m) (ElType m)
   | TyForall ElId (ElKind m) (ElType m)
@@ -119,17 +122,17 @@ data ElType m
 
 data ElIType m
   = ITyVar ElId
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire type
   | ITySusp m (ElIContextHat m) (ElIType m)
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the inner type
   | ITyForce m (ElIType m) (ElISubst m)
   | ITyData [ElIType m] ElId
   | ITyBool m
   | ITyInt m
   | ITyProd [ElIType m]
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire type
   | ITyUp m (ElIContext m) (ElIType m)
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire type
   | ITyDown m (ElIType m)
   | ITyArr (ElIType m) (ElIType m)
   | ITyForall ElId (ElIKind m) (ElIType m)
@@ -186,11 +189,11 @@ data ElITerm m
   | ITmTuple [ElITerm m]
   -- | "m" is the mode of the scrutinee
   | ITmMatch m (ElITerm m) (ElIType m) [ElIBranch m]
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the entire exp
   | ITmSusp m (ElIContextHat m) (ElITerm m)
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the inner type
   | ITmForce m (ElITerm m) (ElISubst m)
-  -- | "m" is the destination mode
+  -- | "m" is the mode of the inner exp
   | ITmStore m (ElITerm m)
   | ITmLam (ElPattern m) (ElIType m) (ElITerm m)
   | ITmTLam ElId (ElIKind m) (ElITerm m)
@@ -222,7 +225,7 @@ data ElISubstEntry m
   deriving stock (Eq, Ord, Show)
 
 type ElSubst m = Seq (ElSubstEntry m)
-type ElISubst m = Seq (ElId, ElISubstEntry m)
+type ElISubst m = Seq (ElISubstEntry m)
 
 data ElBinOp
   = OpAdd
@@ -283,11 +286,14 @@ instance FromInternal (ElModule m) where
 
 instance FromInternal (ElTop m) where
   type Internal (ElTop m) = ElITop m
-  fromInternal (ITopTermDef x ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
+  fromInternal (ITopTermDef x _ ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
   fromInternal (ITopTypeDef ys x k cons) = TopTypeDef (fmap (Just . fromInternal) <$> ys) x k (fmap (fmap (fmap fromInternal)) cons)
 
 icontext2context :: ElIContext m -> ElContext m
 icontext2context = fmap (\(x, _, entry) -> (x, fromInternal entry))
+
+icontextHat2contextHat :: ElIContextHat m -> ElContextHat m
+icontextHat2contextHat = fmap fst
 
 instance FromInternal (ElKind m) where
   type Internal (ElKind m) = ElIKind m
@@ -300,12 +306,12 @@ instance FromInternal (ElSubstEntry m) where
   fromInternal (ISETerm itm) = SEAmbi (AmTerm (fromInternal itm))
 
 isubst2subst :: ElISubst m -> ElSubst m
-isubst2subst = fmap (fromInternal . snd)
+isubst2subst = fmap fromInternal
 
 instance FromInternal (ElType m) where
   type Internal (ElType m) = ElIType m
   fromInternal (ITyVar x) = TyVar x
-  fromInternal (ITySusp _ ihctx ity) = TySusp (fst <$> ihctx) (fromInternal ity)
+  fromInternal (ITySusp _ ihctx ity) = TySusp (icontextHat2contextHat ihctx) (fromInternal ity)
   fromInternal (ITyForce _ ity isub) = TyForce (fromInternal ity) (isubst2subst isub)
   fromInternal (ITyData itys x) = TyData (fromInternal <$> itys) x
   fromInternal (ITyBool k) = TyBool k
@@ -332,7 +338,7 @@ instance FromInternal (ElTerm m) where
   fromInternal (ITmBinOp bop it0 it1) = TmBinOp bop (fromInternal it0) (fromInternal it1)
   fromInternal (ITmTuple its) = TmTuple (fromInternal <$> its)
   fromInternal (ITmMatch _ it ity ibrs) = TmMatch (fromInternal it) (Just (fromInternal ity)) (fmap fromInternal <$> ibrs)
-  fromInternal (ITmSusp _ ihctx it) = TmSusp (fst <$> ihctx) (fromInternal it)
+  fromInternal (ITmSusp _ ihctx it) = TmSusp (icontextHat2contextHat ihctx) (fromInternal it)
   fromInternal (ITmForce _ it isub) = TmForce (fromInternal it) (isubst2subst isub)
   fromInternal (ITmStore _ it) = TmStore (fromInternal it)
   fromInternal (ITmLam x ty it) = TmAmbiLam x (Just (CEType (fromInternal ty))) (fromInternal it)

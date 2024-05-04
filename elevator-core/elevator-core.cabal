@@ -25,9 +25,10 @@ library
   exposed-modules:
     Elevator.ModeSpec
     Elevator.Parser
+    Elevator.Substitution
     Elevator.Syntax
     Elevator.TypeChecker
-    -- Elevator.Evaluator
+    Elevator.Evaluator
     Elevator.PrettyPrinter
 
   -- Modules included in this library but not exported.
