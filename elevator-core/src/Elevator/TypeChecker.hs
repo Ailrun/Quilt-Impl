@@ -225,10 +225,10 @@ checkContext ictx subst
   where
     weakeningLen = length ictx - length subst
 
-    checkHelper ((_, _, ICEKind ki), SEAmbi (AmCore (ambiCore2type -> ty))) = ISEType <$> checkKind ki ty
-    checkHelper ((_, _, ICEKind ki), SEAmbi (AmType ty))                    = ISEType <$> checkKind ki ty
-    checkHelper ((_, _, ICEType ty), SEAmbi (AmCore (ambiCore2term -> t)))  = ISETerm <$> checkType ty t
-    checkHelper ((_, _, ICEType ty), SEAmbi (AmTerm t))                     = ISETerm <$> checkType ty t
+    checkHelper ((x, _, ICEKind ki), SEAmbi (AmCore (ambiCore2type -> ty))) = (x,) . ISEType <$> checkKind ki ty
+    checkHelper ((x, _, ICEKind ki), SEAmbi (AmType ty))                    = (x,) . ISEType <$> checkKind ki ty
+    checkHelper ((x, _, ICEType ty), SEAmbi (AmCore (ambiCore2term -> t)))  = (x,) . ISETerm <$> checkType ty t
+    checkHelper ((x, _, ICEType ty), SEAmbi (AmTerm t))                     = (x,) . ISETerm <$> checkType ty t
     checkHelper ((x, _, _),          se)                                    = throwError $ TESubstitutionEntryClassMismatch x se
 
 checkContextWeakening :: (ElModeSpec m) => ElIContext m -> ElCheckM m ()
@@ -552,7 +552,7 @@ lookupFromSubIctx isub ictx x =
         (_, m, ientry) = ictx `Seq.index` i
       in
       case isub Seq.!? i of
-        Just it  -> Just (m, it, ientry)
+        Just (_, it)  -> Just (m, it, ientry)
         Nothing -> Just (m, iSubEntryOfIContextEntry ientry, ientry)
     Nothing -> Nothing
   where

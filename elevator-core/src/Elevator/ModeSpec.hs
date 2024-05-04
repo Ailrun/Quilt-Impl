@@ -16,10 +16,14 @@ data ElMdSt
   deriving (Eq, Show)
 
 class (Show m, Hashable m) => ElModeSpec m where
+  -- Helper for error message
   showMode :: m -> String
+  -- Helper for parser
   readModeEither :: String -> Either String m
+  -- Main specification
   (<=!!) :: m -> m -> Bool
   modeSt :: m -> ElMdSt -> Bool
+  modePolyTime :: m -> Bool
 
 (<!!) :: (ElModeSpec m) => m -> m -> Bool
 x <!! y = not (y <=!! x) && x <=!! y

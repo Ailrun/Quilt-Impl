@@ -222,7 +222,7 @@ data ElISubstEntry m
   deriving stock (Eq, Ord, Show)
 
 type ElSubst m = Seq (ElSubstEntry m)
-type ElISubst m = Seq (ElISubstEntry m)
+type ElISubst m = Seq (ElId, ElISubstEntry m)
 
 data ElBinOp
   = OpAdd
@@ -300,7 +300,7 @@ instance FromInternal (ElSubstEntry m) where
   fromInternal (ISETerm itm) = SEAmbi (AmTerm (fromInternal itm))
 
 isubst2subst :: ElISubst m -> ElSubst m
-isubst2subst = fmap fromInternal
+isubst2subst = fmap (fromInternal . snd)
 
 instance FromInternal (ElType m) where
   type Internal (ElType m) = ElIType m
