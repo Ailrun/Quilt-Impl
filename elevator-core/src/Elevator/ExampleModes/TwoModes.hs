@@ -25,4 +25,5 @@ instance ElModeSpec TwoMode where
   modePolyTime _ = False
 
 -- Example Program
--- > ITmApp (ITmLam (IPatVar "x") (ITyInt MProg) (ITmVar "x")) (ITmLam (IPatVar "x") (ITyInt MProg) (ITmVar "x"))
+-- > ITmApp (ITmLam (IPatVar "x") (ITyArr (ITyInt MProg) (ITyInt MProg)) (ITmVar "x")) (ITmLam (IPatVar "x") (ITyInt MProg) (ITmVar "x"))
+-- > ITmApp (ITmApp (ITmApp (ITmLam (IPatVar "x") (ITyInt MProg) (ITmLam (IPatVar "y") (ITyUp MCode [("x",MProg,ICEType (ITyInt MProg))] (ITyInt MProg)) (ITmForce MCode (ITmVar "y") [ISETerm (ITmVar "x")]))) (ITmInt 3)) (ITmSusp MCode [("x",MProg,False)] (ITmLam (IPatVar "z") (ITyInt MProg) (ITmBinOp OpAdd (ITmVar "x") (ITmVar "z"))))) (ITmInt 12)

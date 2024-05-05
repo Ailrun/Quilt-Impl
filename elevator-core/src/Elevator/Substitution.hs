@@ -38,6 +38,7 @@ applySubstType sub dom (ITySusp m ctxh ty) = do
 applySubstType sub dom (ITyForce h ty sub') = do
   rty <- applySubstType sub dom ty
   rsub' <- applySubstSubst sub dom sub'
+  -- This part handles the hereditary nature of this substitution
   case rty of
     ITySusp _ ctxh ty' -> applySubstType rsub' (icontextHat2idomain ctxh) ty'
     _                  -> pure $ ITyForce h rty rsub'
