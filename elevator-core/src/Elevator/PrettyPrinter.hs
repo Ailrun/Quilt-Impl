@@ -190,6 +190,9 @@ prettySubstEntry (SEAmbi am) = pretty am
 prettySubst :: (ElModeSpec m) => ElSubst m -> Doc ann
 prettySubst = group . vsepWith comma . fmap pretty
 
+instance (ElModeSpec m) => Pretty (ElIType m) where
+  pretty = prettyType 0 . fromInternal
+
 instance (ElModeSpec m) => Pretty (ElITerm m) where
   pretty = prettyTerm 0 . fromInternal
 
