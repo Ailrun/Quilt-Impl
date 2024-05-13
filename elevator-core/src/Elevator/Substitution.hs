@@ -46,13 +46,13 @@ applySubstType sub dom (ITyData argTys c) = flip ITyData c <$> traverse (applySu
 applySubstType _   _   (ITyBool m) = pure $ ITyBool m
 applySubstType _   _   (ITyInt m) = pure $ ITyInt m
 applySubstType sub dom (ITyProd itemTys) = ITyProd <$> traverse (applySubstType sub dom) itemTys
-applySubstType sub dom (ITyUp m ctx ty) = do
+applySubstType sub dom (ITyUp m l ctx ty) = do
   (ctx', ty') <- freshIContextInType ctx ty
   liftA2
-    (ITyUp m)
+    (ITyUp m l)
     (applySubstCtx sub dom ctx')
     (applySubstType sub dom ty')
-applySubstType sub dom (ITyDown m ty) = ITyDown m <$> applySubstType sub dom ty
+applySubstType sub dom (ITyDown m h ty) = ITyDown m h <$> applySubstType sub dom ty
 applySubstType sub dom (ITyArr ty0 ty1) =
   liftA2
     ITyArr

@@ -151,10 +151,12 @@ data ElIType m
   | ITyBool m
   | ITyInt m
   | ITyProd [ElIType m]
-  -- | "m" is the mode of the entire type
-  | ITyUp m (ElIContext m) (ElIType m)
-  -- | "m" is the mode of the entire type
-  | ITyDown m (ElIType m)
+  -- | The first "m" is the mode of the entire type
+  -- and the second "m" is the mode of the inner type
+  | ITyUp m m (ElIContext m) (ElIType m)
+  -- | The first "m" is the mode of the entire type
+  -- and the second "m" is the mode of the inner type
+  | ITyDown m m (ElIType m)
   | ITyArr (ElIType m) (ElIType m)
   | ITyForall ElId (ElIKind m) (ElIType m)
   deriving stock (Eq, Ord, Show)
@@ -286,18 +288,18 @@ data ElBinOp
   | OpGt
   deriving stock (Eq, Ord, Show)
 
-elBinOpType :: m -> ElBinOp -> (ElType m, ElType m, ElType m)
-elBinOpType m OpAdd = (TyInt m, TyInt m, TyInt m)
-elBinOpType m OpSub = (TyInt m, TyInt m, TyInt m)
-elBinOpType m OpMul = (TyInt m, TyInt m, TyInt m)
-elBinOpType m OpDiv = (TyInt m, TyInt m, TyInt m)
-elBinOpType m OpMod = (TyInt m, TyInt m, TyInt m)
-elBinOpType m OpEq  = (TyInt m, TyInt m, TyBool m)
-elBinOpType m OpNe  = (TyInt m, TyInt m, TyBool m)
-elBinOpType m OpLe  = (TyInt m, TyInt m, TyBool m)
-elBinOpType m OpLt  = (TyInt m, TyInt m, TyBool m)
-elBinOpType m OpGe  = (TyInt m, TyInt m, TyBool m)
-elBinOpType m OpGt  = (TyInt m, TyInt m, TyBool m)
+elBinOpType :: m -> ElBinOp -> (ElIType m, ElIType m, ElIType m)
+elBinOpType k OpAdd = (ITyInt k, ITyInt k, ITyInt k)
+elBinOpType k OpSub = (ITyInt k, ITyInt k, ITyInt k)
+elBinOpType k OpMul = (ITyInt k, ITyInt k, ITyInt k)
+elBinOpType k OpDiv = (ITyInt k, ITyInt k, ITyInt k)
+elBinOpType k OpMod = (ITyInt k, ITyInt k, ITyInt k)
+elBinOpType k OpEq  = (ITyInt k, ITyInt k, ITyBool k)
+elBinOpType k OpNe  = (ITyInt k, ITyInt k, ITyBool k)
+elBinOpType k OpLe  = (ITyInt k, ITyInt k, ITyBool k)
+elBinOpType k OpLt  = (ITyInt k, ITyInt k, ITyBool k)
+elBinOpType k OpGe  = (ITyInt k, ITyInt k, ITyBool k)
+elBinOpType k OpGt  = (ITyInt k, ITyInt k, ITyBool k)
 
 data ElAmbi m
   = AmCore (ElAmbiCore m)
@@ -362,8 +364,8 @@ instance FromInternal (ElType m) where
   fromInternal (ITyBool k) = TyBool k
   fromInternal (ITyInt k) = TyInt k
   fromInternal (ITyProd itys) = TyProd (fromInternal <$> itys)
-  fromInternal (ITyUp k ictx ity) = TyUp k (icontext2context ictx) (fromInternal ity)
-  fromInternal (ITyDown k ity) = TyDown k (fromInternal ity)
+  fromInternal (ITyUp k _ ictx ity) = TyUp k (icontext2context ictx) (fromInternal ity)
+  fromInternal (ITyDown k _ ity) = TyDown k (fromInternal ity)
   fromInternal (ITyArr ity0 ity1) = TyArr (fromInternal ity0) (fromInternal ity1)
   fromInternal (ITyForall x iki ity) = TyForall x (fromInternal iki) (fromInternal ity)
 
