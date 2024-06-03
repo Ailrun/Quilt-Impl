@@ -30,6 +30,7 @@ library
     Elevator.PrettyPrinter
     Elevator.Substitution
     Elevator.Syntax
+    Elevator.Top
     Elevator.TypeChecker
 
   -- Modules included in this library but not exported.

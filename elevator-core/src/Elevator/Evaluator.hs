@@ -4,7 +4,7 @@ module Elevator.Evaluator where
 import Control.Applicative        (Applicative (liftA2), liftA3)
 import Control.Monad              (foldM)
 import Control.Monad.Except       (ExceptT, MonadError (..), runExceptT)
-import Control.Monad.State.Strict (MonadState (get), State, StateT, evalState,
+import Control.Monad.State.Strict (MonadState (get), State, StateT,
                                    evalStateT, modify)
 import Control.Monad.Trans        (MonadTrans (lift))
 import Data.Foldable              (toList)
@@ -38,9 +38,6 @@ checkNormHead ITmSusp{}  = True
 checkNormHead ITmLam{}   = True
 checkNormHead ITmTLam{}  = True
 checkNormHead _          = False
-
-evaluateTerm :: (ElModeSpec m) => ElITerm m -> Either String (ElITerm m)
-evaluateTerm = flip evalState 0 . runExceptT . flip evalStateT (ElEnv HashMap.empty) . runElEvalM . eval
 
 eval :: (ElModeSpec m) => ElITerm m -> ElEvalM m (ElITerm m)
 eval (ITmVar x) = do
@@ -250,3 +247,6 @@ newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m) (ExceptT String (
 
 substM2evalM :: ElSubstM a -> ElEvalM m a
 substM2evalM = ElEvalM . lift . runElSubstM
+
+fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String a)
+fullRunElEvalM = runExceptT . flip evalStateT (ElEnv HashMap.empty) . runElEvalM

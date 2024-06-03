@@ -20,6 +20,9 @@ showPretty n = showDoc n . pretty
 showPrettyIndent :: (Pretty a) => Int -> Int -> a -> String
 showPrettyIndent n m = showDoc n . indent m . pretty
 
+showPrettyMode :: (ElModeSpec m) => Int -> m -> String
+showPrettyMode n = showDoc n . prettyMode
+
 instance (ElModeSpec m) => Pretty (ElTop m) where
   pretty = prettyTop
 

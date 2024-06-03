@@ -6,8 +6,8 @@ module Elevator.TypeChecker where
 
 import Control.Applicative        (Applicative (..))
 import Control.Comonad            (Comonad (duplicate))
-import Control.Monad              (forM, forM_, unless)
-import Control.Monad.Except       (ExceptT, MonadError (..), withError, liftEither, mapExceptT)
+import Control.Monad              (forM, forM_, unless, foldM)
+import Control.Monad.Except       (ExceptT, MonadError (..), withError, liftEither, mapExceptT, runExceptT)
 import Control.Monad.Extra        (whenJustM)
 import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State.Strict (State)
@@ -27,44 +27,87 @@ checkModule :: (ElModeSpec m) => ElModule m -> ElCheckM m (ElIModule m)
 checkModule (ElModule [] tops) = do
   (typeEnv, mayAnnTops) <- underEnv mempty $ buildTypeEnv tops
   (termEnv, annTops) <- underEnv typeEnv $ buildTermEnv mayAnnTops
-  underEnv (typeEnv <> termEnv) $ ElIModule [] <$> traverse checkAnnTop annTops
+  underEnv (typeEnv <> termEnv) $ ElIModule [] <$> traverse checkPETop annTops
 checkModule (ElModule _ _)     = throwError $ TENotYetSupported "module dependence"
 
 buildTypeEnv :: (ElModeSpec m) => [ElTop m] -> ElCheckM m (ElTypingEnvironment m, [ElPostTypeEnvTop m])
-buildTypeEnv = mapAccumM buildForTop mempty
-  where
-    buildForTop env (TopTermDef x ty t)        = pure (env, PTETopTermDef x ty t)
-    buildForTop env (TopTypeDef args x k cons) = do
-      whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
-      iargs <- forM args $ \(y, yki) ->
-        (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
-      let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))
-      pure (env', PTETopTypeDef iargs x k cons)
+buildTypeEnv = mapAccumM accumTypeEnvForTop mempty
+
+accumTypeEnvForTop :: ElModeSpec m => ElTypingEnvironment m -> ElTop m -> ElCheckM m (ElTypingEnvironment m, ElPostTypeEnvTop m)
+accumTypeEnvForTop env (TopTermDef x ty t)        = pure (env, PTETopTermDef x ty t)
+accumTypeEnvForTop env (TopTypeDef args x k cons) = underEnv env $ do
+  whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
+  iargs <- forM args $ \(y, yki) ->
+    (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
+  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))
+  pure (env', PTETopTypeDef iargs x k cons)
 
 buildTermEnv :: (ElModeSpec m) => [ElPostTypeEnvTop m] -> ElCheckM m (ElTypingEnvironment m, [ElPostEnvTop m])
-buildTermEnv = mapAccumM buildForMayAnnTop mempty
-  where
-    buildForMayAnnTop env (PTETopTypeDef iargs x k cons) = do
-      forM_ cons $ \(c, _) ->
-        whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName c
-      icons <- checkCons iargs cons
-      let env' = env <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
-      pure (env', PETopTypeDef iargs x k icons)
-    buildForMayAnnTop env (PTETopTermDef x ty t)         = do
-      whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
-      (ity, k) <- checkWFOfType ty
-      let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
-      pure (env', PETopTermDef x k ity t)
+buildTermEnv = mapAccumM accumTermEnvForPTETop mempty
 
-checkAnnTop :: (ElModeSpec m) => ElPostEnvTop m -> ElCheckM m (ElITop m)
-checkAnnTop (PETopTypeDef iargs x k icons) = pure $ ITopTypeDef iargs x k icons
-checkAnnTop (PETopTermDef x m ity t)       = ITopTermDef x m ity <$> checkType ity t
+accumTermEnvForPTETop :: ElModeSpec m => ElTypingEnvironment m -> ElPostTypeEnvTop m -> ElCheckM m (ElTypingEnvironment m, ElPostEnvTop m)
+accumTermEnvForPTETop env (PTETopTypeDef iargs x k cons) = underEnv env $ do
+  forM_ cons $ \(c, _) ->
+    whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName c
+  icons <- checkCons iargs cons
+  let env' = env <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
+  pure (env', PETopTypeDef iargs x k icons)
+accumTermEnvForPTETop env (PTETopTermDef x ty t)         = underEnv env $ do
+  whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
+  (ity, k) <- checkWFOfType ty
+  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
+  pure (env', PETopTermDef x k ity t)
+
+checkPETop :: (ElModeSpec m) => ElPostEnvTop m -> ElCheckM m (ElITop m)
+checkPETop (PETopTypeDef iargs x k icons) = pure $ ITopTypeDef iargs x k icons
+checkPETop (PETopTermDef x k ity t)       = ITopTermDef x k ity <$> checkType ity t
 
 checkCons :: (ElModeSpec m) => [(ElId, ElIKind m)] -> [(ElId, [ElType m])] -> ElCheckM m [(ElId, [ElIType m])]
 checkCons iargs = traverse checkCon
   where
     checkCon (c, argTys) = (c,) <$> traverse (local (<> iargsctx) . checkWFOfType_) argTys
     iargsctx = Seq.fromList ((\(y, yiki) -> (y, getModeOfIKind yiki, ICEKind yiki)) <$> iargs)
+
+buildEnv :: (ElModeSpec m) => [ElITop m] -> ElCheckM m (ElTypingEnvironment m)
+buildEnv = foldM accumEnvForTop mempty
+
+accumEnvForTop :: ElModeSpec m => ElTypingEnvironment m -> ElITop m -> ElCheckM m (ElTypingEnvironment m)
+accumEnvForTop env (ITopTermDef x k ity _) = do
+  whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
+  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
+  pure env'
+accumEnvForTop env (ITopTypeDef iargs x k icons) = do
+  whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
+  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs)) <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
+  pure env'
+
+checkTopUnderModule :: (ElModeSpec m) => ElIModule m -> ElTop m -> ElCheckM m (ElIModule m)
+checkTopUnderModule (ElIModule mids itops) top = do
+  env <- buildEnv itops
+  underEnv env $
+    ElIModule mids . (itops <>) . pure <$> checkTop top
+
+checkTop :: (ElModeSpec m) => ElTop m -> ElCheckM m (ElITop m)
+checkTop (TopTermDef x ty t) = do
+  whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
+  (ity, k) <- checkWFOfType ty
+  env <- askEnv
+  underEnv (env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))) $
+    ITopTermDef x k ity <$> checkType ity t
+checkTop (TopTypeDef args x k cons) = do
+  whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
+  iargs <- forM args $ \(y, yki) ->
+    (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
+  env <- askEnv
+  underEnv (env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))) $ do
+    forM_ cons $ \(c, _) ->
+      whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName c
+    ITopTypeDef iargs x k <$> checkCons iargs cons
+
+inferTypeUnderModule :: (ElModeSpec m) => ElIModule m -> ElTerm m -> ElCheckM m (ElITerm m, ElIType m, m)
+inferTypeUnderModule (ElIModule _ itops) t = do
+  env <- buildEnv itops
+  underEnv env $ inferType t
 
 ------------------------------------------------------------
 -- "checkWFOfKind", "checkWFOfKind_",
@@ -487,6 +530,9 @@ instance (ElModeSpec m) => MonadError (ElTypingError m) (ElCheckM m) where
 
 substM2checkM :: ElSubstM a -> ElCheckM m a
 substM2checkM = ElCheckM . const . const . mapExceptT (fmap (first TESubstitutionError)) . fmap (UEmpty,) . runElSubstM
+
+fullRunElCheckM :: ElCheckM m a -> State Integer (Either (ElTypingError m) a)
+fullRunElCheckM = fmap (fmap snd) . runExceptT . ($ Seq.empty) . ($ ElTypingEnvironment Seq.empty) . runElCheckM
 
 -- We need this function only to check whether a type is used in
 -- a valid mode or not. This does not actually "consume" the
