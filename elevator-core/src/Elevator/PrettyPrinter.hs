@@ -126,7 +126,7 @@ prettyTerm p (TmMatch t mayTy [(PatLoad pat, t0)]) =
   $ vsep
     [ nest 2
       $ fillSep
-        [ "load" <> pretty pat <> prettyTypeAnn mayTy <+> equals
+        [ "load" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
         , pretty t
         ]
     , "in" <+> pretty t0
@@ -138,7 +138,7 @@ prettyTerm p (TmMatch t mayTy [(pat, t0)]) =
   $ vsep
     [ nest 2
       $ fillSep
-        [ "let" <> pretty pat <> prettyTypeAnn mayTy <+> equals
+        [ "let" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
         , pretty t
         ]
     , "in" <+> pretty t0

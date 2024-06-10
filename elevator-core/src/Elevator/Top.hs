@@ -21,7 +21,7 @@ import System.IO                  (hFlush, stdout)
 
 type ElTopM = StateT Integer IO
 
-data ElTopErr = TypeError | EvalError
+data ElTopErr m = TypeError (ElTypingError m) | EvalError String
   deriving (Show)
 
 runElTopM :: ElTopM a -> IO a
@@ -39,7 +39,7 @@ interpreterWithFile (_ :: Proxy m) fp = do
       flippedEither checkRes handleModuleCheckingError $ interpreterLoop 0
     Left err -> lift $ putStrLn $ "Error " <> "<" <> fp <> ">" <> " : " <> err
   where
-    handleModuleCheckingError _ = lift $ putStrLn  $ "TypeError " <> "<" <> fp <> ">"
+    handleModuleCheckingError err = lift $ putStrLn  $ "TypeError " <> "<" <> fp <> "> : " <> show err
 
 interpreterLoop :: (ElModeSpec m) => Integer -> ElIModule m -> ElTopM ()
 interpreterLoop n modu = do
@@ -60,27 +60,31 @@ interpreterLoop n modu = do
           mayModu'' <- fullCommandRun modu' n com
           case mayModu'' of
             Right modu'' -> interpreterLoop (n + 1) modu''
-            Left err     -> lift $ print err
+            Left err     -> do
+              lift $ putStrLn $ "Error " <> "<line " <> show n <> "> : " <> show err
+              interpreterLoop (n + 1) modu'
         Left err -> do
           lift $ putStrLn $ "Error " <> "<line " <> show n <> "> : " <> err
           interpreterLoop (n + 1) modu'
 
-fullCommandRun :: (ElModeSpec m) => ElIModule m -> Integer -> ElCommand m -> ElTopM (Either ElTopErr (ElIModule m))
+fullCommandRun :: (ElModeSpec m) => ElIModule m -> Integer -> ElCommand m -> ElTopM (Either (ElTopErr m) (ElIModule m))
 fullCommandRun modu _n (ComTop top) = do
   checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ checkTopUnderModule modu top
-  flippedEither checkRes (const (pure (Left TypeError))) $ \modu' -> do
-    lift $ putStrLn $ showPretty 80 top
+  flippedEither checkRes (pure . Left . TypeError) $ \modu' -> lift $ do
+    putStrLn $ showPretty 80 top
     pure (Right modu')
 fullCommandRun modu _n (ComTerm t) = do
   checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ inferTypeUnderModule modu t
-  flippedEither checkRes (const (pure (Left TypeError))) $ \(it, ity, k) -> do
+  flippedEither checkRes (pure . Left . TypeError) $ \(it, ity, k) -> do
     lift $ putStrLn "------ type checking result ------"
     lift $ putStrLn $ showPretty 80 (TmAnn (fromInternal it) (fromInternal ity))
     lift $ putStrLn $ "------ of mode " <> showPrettyMode 80 k <> " ------"
     evalRes <- mapStateT (pure . runIdentity) $ fullRunElEvalM $ evalUnderModule modu it
-    flippedEither evalRes (const (pure (Left TypeError))) $ \it' -> do
-      lift $ putStrLn "------ evaluation result ------"
-      lift $ putStrLn $ showPretty 80 it'
+    flippedEither evalRes (pure . Left . EvalError) $ \(it', env) -> lift $ do
+      putStrLn "------ evaluation result ------"
+      putStrLn $ showPretty 80 it'
+      putStrLn "------ under ------"
+      print env
       pure (Right modu)
 
 getMultiLine :: IO Text

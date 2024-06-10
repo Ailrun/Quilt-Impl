@@ -229,7 +229,7 @@ parseBinOpTerm = CMCE.makeExprParser parseApplikeTerm table
       ]
 
 parseApplikeTerm :: (ElModeSpec m) => ElParser (ElTerm m)
-parseApplikeTerm = parseShiftTerm <|> parseDataTerm <|> parseAppTerm
+parseApplikeTerm = parseShiftTerm <|> try parseDataTerm <|> parseAppTerm
 
 parseShiftTerm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseShiftTerm =
@@ -389,7 +389,7 @@ parseSuspCommon cons ap p = keyword "susp" *> parseOpenItem
     parseOpenItem = cons Seq.empty <$> try ap <|> parened (liftA2 cons parseContextHat (symbol "." *> p))
 
 parseForceCommon :: (ElModeSpec m) => (f m -> ElSubst m -> f m) -> ElParser (f m) -> ElParser (f m)
-parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Empty (symbol "with" *> parseSubst))
+parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Empty (symbol "@" *> parseSubst))
 
 parseContext :: (ElModeSpec m) => ElParser (ElContext m)
 parseContext = Seq.fromList <$> impl <?> "context"

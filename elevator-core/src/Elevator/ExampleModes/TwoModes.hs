@@ -19,8 +19,7 @@ instance ElModeSpec TwoMode where
   MProg <=!! MCode = True
   m     <=!! n     = m == n
 
-  modeSt MProg _ = True
-  modeSt MCode _ = True
+  modeSig _ _ = True
 
   modePolyTime _ = False
 

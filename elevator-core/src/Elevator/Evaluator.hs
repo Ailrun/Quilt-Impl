@@ -2,12 +2,10 @@
 module Elevator.Evaluator where
 
 import Control.Applicative        (Applicative (liftA2), liftA3)
-import Control.Monad              (foldM)
 import Control.Monad.Except       (ExceptT, MonadError (..), runExceptT)
-import Control.Monad.State.Strict (MonadState (get), State, StateT,
-                                   evalStateT, modify)
+import Control.Monad.State.Strict (MonadState (get), State, StateT (runStateT), modify)
 import Control.Monad.Trans        (MonadTrans (lift))
-import Data.Foldable              (toList)
+import Data.Foldable              (toList, foldlM)
 import Data.HashMap.Strict        (HashMap)
 import Data.HashMap.Strict        qualified as HashMap
 import Data.List                  (foldl')
@@ -31,10 +29,13 @@ evalUnderModule (ElIModule _imps tops) t = do
     envHelper envMap ITopTypeDef{}          = envMap
 
 checkNormHead :: ElITerm m -> Bool
+checkNormHead ITmData{}  = True
 checkNormHead ITmTrue    = True
 checkNormHead ITmFalse   = True
 checkNormHead (ITmInt _) = True
+checkNormHead ITmTuple{} = True
 checkNormHead ITmSusp{}  = True
+checkNormHead ITmStore{} = True
 checkNormHead ITmLam{}   = True
 checkNormHead ITmTLam{}  = True
 checkNormHead _          = False
@@ -75,7 +76,7 @@ eval (ITmMatch m t ty brs) = do
   r <- eval t
   if checkNormHead r
   then do
-    b <- firstMatchingBranch brs t
+    b <- firstMatchingBranch brs r
     eval b
   else pure $ ITmMatch m t ty brs
 eval (ITmSusp m ctxh t) = do
@@ -129,10 +130,10 @@ matching IPatTrue             ITmTrue              b = pure b
 matching IPatFalse            ITmFalse             b = pure b
 matching (IPatInt n)          (ITmInt n')          b
   | n == n'                                          = pure b
-matching (IPatTuple pats)     (ITmTuple items)     b = foldM (\b' (pat, item) -> matching pat item b') b $ zip pats items
+matching (IPatTuple pats)     (ITmTuple items)     b = foldlM (\b' (pat, item) -> matching pat item b') b $ zip pats items
 matching (IPatLoad pat)       (ITmStore _ t)       b = matching pat t b
 matching (IPatData _ cn pats) (ITmData _ cn' args) b
-  | cn == cn'                                        = foldM (\b' (pat, arg) -> matching pat arg b') b $ zip pats args
+  | cn == cn'                                        = foldlM (\b' (pat, arg) -> matching pat arg b') b $ zip pats args
 matching _                    _                    _ = throwError "Pattern mismatching"
 
 refineTemplate :: (ElModeSpec m) => m -> ElITerm m -> ElEvalM m (ElITerm m)
@@ -165,7 +166,15 @@ refineTemplate n (ITmSusp m ctxh t)    = do
   envExtend ctxh'
   ITmSusp m ctxh' <$> refineTemplate n t'
 refineTemplate n (ITmForce h t sub)
-  | h >=!! n                           = eval (ITmForce h t sub)
+  | h >=!! n                           = do
+    r <- eval t
+    case r of
+      ITmSusp _ ctxh t' -> do
+        t'' <- substM2evalM $ applySubstTerm sub (icontextHat2idomain ctxh) t'
+        refineTemplate n t''
+      _
+        | checkNormHead r -> throwError $ "Non Template result \"" <> show r <> "\" for force"
+        | otherwise -> pure $ ITmForce h r sub
   | otherwise                          = flip (ITmForce h) sub <$> refineTemplate n t
 refineTemplate n (ITmStore h t)
   | h >=!! n                           = ITmStore h <$> eval t
@@ -248,5 +257,5 @@ newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m) (ExceptT String (
 substM2evalM :: ElSubstM a -> ElEvalM m a
 substM2evalM = ElEvalM . lift . runElSubstM
 
-fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String a)
-fullRunElEvalM = runExceptT . flip evalStateT (ElEnv HashMap.empty) . runElEvalM
+fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String (a, ElEnv m))
+fullRunElEvalM = runExceptT . flip runStateT (ElEnv HashMap.empty) . runElEvalM

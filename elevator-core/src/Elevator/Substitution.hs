@@ -8,6 +8,7 @@ import Data.Sequence              (Seq)
 import Data.Sequence              qualified as Seq
 import Data.Traversable.Compat    (mapAccumM)
 import Data.Tuple                 (swap)
+import Data.Tuple.Extra           (second3)
 import Elevator.ModeSpec
 import Elevator.PrettyPrinter
 import Elevator.Syntax
@@ -153,7 +154,7 @@ freshPattern (IPatVar x)          b = do
   (x', b') <- freshTmVarInTerm x b
   pure (Seq.singleton x', IPatVar x', b')
 freshPattern (IPatTuple pats)     b = (\(b', patEnvs') -> let (pats', envs') = unzip patEnvs' in (mconcat envs', IPatTuple pats', b')) <$> mapAccumM (\b' pat -> (\(env'', pat', b'') -> (b'', (pat', env''))) <$> freshPattern pat b') b pats
-freshPattern (IPatLoad pat)       b = freshPattern pat b
+freshPattern (IPatLoad pat)       b = second3 IPatLoad <$> freshPattern pat b
 freshPattern (IPatData c cn pats) b = (\(b', patEnvs') -> let (pats', envs') = unzip patEnvs' in (mconcat envs', IPatData c cn pats', b')) <$> mapAccumM (\b' pat -> (\(env'', pat', b'') -> (b'', (pat', env''))) <$> freshPattern pat b') b pats
 freshPattern pat                  b = pure (Seq.empty, pat, b)
 

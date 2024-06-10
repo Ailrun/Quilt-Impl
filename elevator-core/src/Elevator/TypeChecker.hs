@@ -1,23 +1,24 @@
 {-# LANGUAGE CPP             #-}
 {-# LANGUAGE DerivingVia     #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns    #-}
 module Elevator.TypeChecker where
 
 import Control.Applicative        (Applicative (..))
 import Control.Comonad            (Comonad (duplicate))
-import Control.Monad              (forM, forM_, unless, foldM)
+import Control.Monad              (forM, forM_, unless)
 import Control.Monad.Except       (ExceptT, MonadError (..), withError, liftEither, mapExceptT, runExceptT)
-import Control.Monad.Extra        (whenJustM)
+import Control.Monad.Extra        (whenJustM, whenJust)
 import Control.Monad.Reader.Class (MonadReader (..))
 import Control.Monad.State.Strict (State)
 import Data.Bifunctor             (Bifunctor (..))
-import Data.Foldable              (Foldable (toList), foldrM, traverse_)
+import Data.Foldable              (Foldable (toList), traverse_, foldlM)
 import Data.Sequence              (Seq (..), pattern (:|>))
 import Data.Sequence              qualified as Seq
 import Data.Set                   qualified as Set
 import Data.Traversable.Compat    (mapAccumM)
-import Data.Tuple.Extra           (fst3)
+import Data.Tuple.Extra           (fst3, thd3)
 import Elevator.ModeSpec
 import Elevator.Substitution
 import Elevator.Syntax
@@ -35,7 +36,7 @@ buildTypeEnv = mapAccumM accumTypeEnvForTop mempty
 
 accumTypeEnvForTop :: ElModeSpec m => ElTypingEnvironment m -> ElTop m -> ElCheckM m (ElTypingEnvironment m, ElPostTypeEnvTop m)
 accumTypeEnvForTop env (TopTermDef x ty t)        = pure (env, PTETopTermDef x ty t)
-accumTypeEnvForTop env (TopTypeDef args x k cons) = underEnv env $ do
+accumTypeEnvForTop env (TopTypeDef args x k cons) = do
   whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
   iargs <- forM args $ \(y, yki) ->
     (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
@@ -46,30 +47,35 @@ buildTermEnv :: (ElModeSpec m) => [ElPostTypeEnvTop m] -> ElCheckM m (ElTypingEn
 buildTermEnv = mapAccumM accumTermEnvForPTETop mempty
 
 accumTermEnvForPTETop :: ElModeSpec m => ElTypingEnvironment m -> ElPostTypeEnvTop m -> ElCheckM m (ElTypingEnvironment m, ElPostEnvTop m)
-accumTermEnvForPTETop env (PTETopTypeDef iargs x k cons) = underEnv env $ do
+accumTermEnvForPTETop env (PTETopTypeDef iargs x k cons) = do
   forM_ cons $ \(c, _) ->
     whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName c
-  icons <- checkCons iargs cons
+  icons <- withError (TEFor $ TETVariable x) $ checkCons iargs cons
   let env' = env <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
   pure (env', PETopTypeDef iargs x k icons)
-accumTermEnvForPTETop env (PTETopTermDef x ty t)         = underEnv env $ do
+accumTermEnvForPTETop env (PTETopTermDef x ty t)         = do
   whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedConName x
-  (ity, k) <- checkWFOfType ty
+  (ity, k) <- withError (TEFor (TETVariable x) . TEFor (TETType ty)) $ checkWFOfType ty
   let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
   pure (env', PETopTermDef x k ity t)
 
 checkPETop :: (ElModeSpec m) => ElPostEnvTop m -> ElCheckM m (ElITop m)
 checkPETop (PETopTypeDef iargs x k icons) = pure $ ITopTypeDef iargs x k icons
-checkPETop (PETopTermDef x k ity t)       = ITopTermDef x k ity <$> checkType ity t
+checkPETop (PETopTermDef x k ity t)       = withError (TEFor (TETVariable x)) $ ITopTermDef x k ity <$> checkType ity t
 
 checkCons :: (ElModeSpec m) => [(ElId, ElIKind m)] -> [(ElId, [ElType m])] -> ElCheckM m [(ElId, [ElIType m])]
 checkCons iargs = traverse checkCon
   where
-    checkCon (c, argTys) = (c,) <$> traverse (local (<> iargsctx) . checkWFOfType_) argTys
+    checkCon (c, argTys) =
+      withError (TEFor $ TETVariable c)
+      $ removeTypeVariables iargsrem
+      $ (c,) <$> traverse (local (<> iargsctx) . checkWFOfType_) argTys
+
     iargsctx = Seq.fromList ((\(y, yiki) -> (y, getModeOfIKind yiki, ICEKind yiki)) <$> iargs)
+    iargsrem = fmap (\(x, k, _) -> (x, k)) iargsctx
 
 buildEnv :: (ElModeSpec m) => [ElITop m] -> ElCheckM m (ElTypingEnvironment m)
-buildEnv = foldM accumEnvForTop mempty
+buildEnv = foldlM accumEnvForTop mempty
 
 accumEnvForTop :: ElModeSpec m => ElTypingEnvironment m -> ElITop m -> ElCheckM m (ElTypingEnvironment m)
 accumEnvForTop env (ITopTermDef x k ity _) = do
@@ -122,7 +128,7 @@ checkWFOfKind :: (ElModeSpec m) => ElKind m -> ElCheckM m (ElIKind m, m)
 checkWFOfKind (KiType k)          = pure (IKiType k, k)
 checkWFOfKind ki@(KiUp k ctx ki') = do
   ictx <- checkWFOfContext ctx
-  (iki', l) <- checkWFOfKind ki'
+  (iki', l) <- removeVariables (putIHat ictx) $ local (<> ictx) $ checkWFOfKind ki'
   testIsLEMode l k
   withError (TEFor $ TETKind ki) $ checkRangeOfContext (Just l) (Just k) ictx
   pure (IKiUp k ictx iki', k)
@@ -157,7 +163,7 @@ checkWFOfType (TyProd (ty:tys))    = do
   pure (ITyProd (ity:itys), k)
 checkWFOfType ty@(TyUp k ctx ty')  = do
   ictx <- checkWFOfContext ctx
-  (ity, l) <- checkWFOfType ty'
+  (ity, l) <- removeVariables (putIHat ictx) $ local (<> ictx) $ checkWFOfType ty'
   testIsLEMode l k
   withError (TEFor $ TETType ty) $ checkRangeOfContext (Just l) (Just k) ictx
   pure (ITyUp k l ictx ity, k)
@@ -172,8 +178,8 @@ checkWFOfType (TyArr ty0 ty1)      = do
   pure (ITyArr ity0 ity1, k1)
 checkWFOfType (TyForall x ki0 ty1) = do
   (iki0, m) <- checkContextUsageGEBy snd $ checkWFOfKind ki0
-  (ity1, k) <- local (:|> (x, m, ICEKind iki0)) $ checkWFOfType ty1
-  testIsGTMode m k
+  (ity1, k) <- removeTypeVariable (x, m) $ local (:|> (x, m, ICEKind iki0)) $ checkWFOfType ty1
+  testIsGEMode m k
   pure (ITyForall x iki0 ity1, k)
 checkWFOfType (TySusp {})          = throwError TEInvalidKindTypeForSusp
 checkWFOfType ty                   = do
@@ -187,7 +193,7 @@ checkKind :: (ElModeSpec m) => ElIKind m -> ElType m -> ElCheckM m (ElIType m)
 checkKind iki (TySusp ctxh ty)
   | IKiUp m ictx iki' <- iki   = do
     ictxh <- checkWFOfContextHat ctxh ictx
-    local (<> ictx) $ ITySusp m ictxh <$> checkKind iki' ty
+    removeVariables ictxh $ local (<> ictx) $ ITySusp m ictxh <$> checkKind iki' ty
   | otherwise                  = throwError $ TEInvalidKindForSusp iki
 checkKind iki ty@(TyVar {})    = checkKindByInfer iki ty
 checkKind iki ty@(TyForce {})  = checkKindByInfer iki ty
@@ -245,15 +251,16 @@ checkWFOfContextEntry (CEType ty) = first ICEType <$> checkWFOfType ty
 -- This works only when all entries in input context have lower modes
 -- than any entry in the ambient context.
 checkWFOfContext :: (ElModeSpec m) => ElContext m -> ElCheckM m (ElIContext m)
-checkWFOfContext = foldrM folder Seq.empty
+checkWFOfContext = foldlM folder Seq.empty
   where
-    folder (x, entry) ictx =
-      (ictx :|>) . uncurry (flip (x,,))
+    folder ictx (x, entry) =
+      removeVariables (putIHat ictx)
+      $ (ictx :|>) . uncurry (flip (x,,))
       <$> local (<> ictx) (checkWFOfContextEntry entry)
 
 checkWFOfContextHat :: (ElModeSpec m) => ElContextHat m -> ElIContext m -> ElCheckM m (ElIContextHat m)
 checkWFOfContextHat ctxh ictx = do
-  unless (length ctxh == length ictx) $ throwError $ TEContextHatConflict ctxh ictx
+  unless (ctxh == icontextHat2contextHat (putIHat ictx)) $ throwError $ TEContextHatConflict ctxh ictx
   pure $ putIHat ictx
 
 -- This function assumes that the input type is normalized
@@ -298,8 +305,8 @@ checkType ity (TmBinOp bop t0 t1) = do
   it1 <- checkType ity1 t1
   pure (ITmBinOp bop it0 it1)
 checkType ity (TmMatch t mayTy brs) = do
-  (it, ity', k) <- maybe (inferType t) withTypeHelper mayTy
-  ITmMatch k it ity' <$> traverse (checkBranch ity' k ity) brs
+  (it, ity', k) <- checkContextUsageGEBy thd3 $ maybe (inferType t) withTypeHelper mayTy
+  runElCheckUnionM $ ITmMatch k it ity' <$> traverse (ElCheckUnionM . checkBranch ity' k ity) brs
   where
     withTypeHelper ty' = do
       (ity', k) <- checkWFOfType ty'
@@ -314,10 +321,10 @@ checkType ity (TmTuple items)
 checkType ity (TmSusp ctxh t)
   | ITyUp m _ ictx ity' <- ity = do
     ictxh <- checkWFOfContextHat ctxh ictx
-    local (<> ictx) $ ITmSusp m ictxh <$> checkType ity' t
+    removeVariables ictxh $ local (<> ictx) $ ITmSusp m ictxh <$> checkType ity' t
   | otherwise                = throwError $ TEInvalidTypeForSusp ity
 checkType ity (TmStore t)
-  | ITyDown _ h ity' <- ity = ITmStore h <$> checkContextUsageGE h (checkType ity' t)
+  | ITyDown _ h ity' <- ity = checkContextUsageGE h $ ITmStore h <$> checkType ity' t
   | otherwise               = throwError $ TEInvalidTypeForSusp ity
 checkType ity (TmAmbiLam pat mayCE t)
   | ITyArr ity0 ity1 <- ity = do
@@ -334,7 +341,7 @@ checkType ity (TmAmbiLam pat mayCE t)
       case mayCE of
         Just (CEType ty0) -> throwError $ TEInvalidTypeAnnForTypeLam ty0
         Just (CEKind ki0') -> do
-          (iki0', k) <- checkWFOfKind ki0'
+          (iki0', k) <- checkContextUsageGEBy snd $ checkWFOfKind ki0'
           unifyIKind iki0 iki0'
           handleTypeLambda iki0 k ity1
         Nothing -> handleTypeLambda iki0 (getModeOfIKind iki0) ity1
@@ -342,11 +349,11 @@ checkType ity (TmAmbiLam pat mayCE t)
   where
     handleLambda ity0 k ity1 = do
       (ipat, ictx) <- checkPatternType ity0 k pat
-      ITmLam ipat ity0 <$> local (<> ictx) (checkType ity1 t)
+      removeVariables (putIHat ictx) $ ITmLam ipat ity0 <$> local (<> ictx) (checkType ity1 t)
 
     handleTypeLambda iki0 k ity1 = do
       case pat of
-        PatVar x -> ITmTLam x iki0 <$> local (:|> (x, k, ICEKind iki0)) (checkType ity1 t)
+        PatVar x -> removeTypeVariable (x, k) $ ITmTLam x iki0 <$> local (:|> (x, k, ICEKind iki0)) (checkType ity1 t)
         _        -> throwError $ TEInvalidPatternForTypeLam pat
 checkType ity t = do
   (it, ity', _) <- inferType t
@@ -356,8 +363,8 @@ checkType ity t = do
 -- This function assumes that the input types are normalized
 checkBranch :: (ElModeSpec m) => ElIType m -> m -> ElIType m -> ElBranch m -> ElCheckM m (ElIBranch m)
 checkBranch ipatTy k ibTy (pat, b) = do
-  (ipat, ctx) <- checkPatternType ipatTy k pat
-  (ipat,) <$> local (<> ctx) (checkType ibTy b)
+  (ipat, ictx) <- checkPatternType ipatTy k pat
+  removeVariables (putIHat ictx) $ (ipat,) <$> local (<> ictx) (checkType ibTy b)
 
 -- This function always returns a normalized type
 inferType :: (ElModeSpec m) => ElTerm m -> ElCheckM m (ElITerm m, ElIType m, m)
@@ -369,7 +376,7 @@ inferType (TmTuple items) = do
   forM_ (tail ms) $ testIsSameMode (head ms)
   pure (ITmTuple iitems, ITyProd itys, head ms)
 inferType (TmForce t sub) = do
-  (it, ity, k) <- inferType t
+  (it, ity, k) <- checkContextUsageGEBy thd3 $ inferType t
   case ity of
     ITyUp _ l ictx ity' -> (, ity', l) . ITmForce k it <$> checkContext ictx sub
     _ -> throwError $ TEInvalidArgTypeForForce ity
@@ -474,6 +481,9 @@ testContextEntryUsageGE :: (MonadError (ElTypingError m) em, ElModeSpec m) => m 
 testContextEntryUsageGE k (CEUKind m) = testIsGEMode m k
 testContextEntryUsageGE k (CEUType m) = testIsGEMode m k
 
+testContextUsageWk ::  (MonadError (ElTypingError m) em, ElModeSpec m) => ElContextUsage m -> em ()
+testContextUsageWk = traverse_ (flip whenJust testIsWkMode . getCEUType . snd) . getElContextUsage
+
 testIsGEMode :: (MonadError (ElTypingError m) em, ElModeSpec m) => m -> m -> em ()
 testIsGEMode m k = unless (m >=!! k) $ throwError $ TEModeOrderFailure TEMOGE m k
 
@@ -487,10 +497,10 @@ testIsSameMode :: (MonadError (ElTypingError m) em, ElModeSpec m) => m -> m -> e
 testIsSameMode k0 k1 = unless (k0 == k1) $ throwError $ TEModeNotEqual k0 k1
 
 testIsCoMode :: (MonadError (ElTypingError m) em, ElModeSpec m) => m -> em ()
-testIsCoMode k = unless (modeSt k MdStCo) $ throwError $ TEModeStructuralRule MdStCo k
+testIsCoMode k = unless (modeSig k MdStCo) $ throwError $ TEModeStructuralRule MdStCo k
 
 testIsWkMode :: (MonadError (ElTypingError m) em, ElModeSpec m) => m -> em ()
-testIsWkMode k = unless (modeSt k MdStWk) $ throwError $ TEModeStructuralRule MdStWk k
+testIsWkMode k = unless (modeSig k MdStWk) $ throwError $ TEModeStructuralRule MdStWk k
 
 ------------------------------------------------------------
 -- Type checker monad
@@ -528,6 +538,26 @@ instance (ElModeSpec m) => MonadError (ElTypingError m) (ElCheckM m) where
   throwError = ElCheckM . const . const . throwError
   catchError am f = ElCheckM $ \env tctx -> catchError (runElCheckM am env tctx) (\err -> runElCheckM (f err) env tctx)
 
+newtype ElCheckUnionM m a = ElCheckUnionM { runElCheckUnionM :: ElCheckM m a }
+  deriving stock (Functor)
+
+instance (ElModeSpec m) => Applicative (ElCheckUnionM m) where
+  pure = ElCheckUnionM . pure
+  fm <*> am = ElCheckUnionM $ ElCheckM $ \env tctx -> do
+    (fuse, f) <- runElCheckM (runElCheckUnionM fm) env tctx
+    (ause, a) <- runElCheckM (runElCheckUnionM am) env tctx
+    liftEither $ (, f a) <$> unionUsage fuse ause
+  liftA2 f am bm = ElCheckUnionM $ ElCheckM $ \env tctx -> do
+    (ause, a) <- runElCheckM (runElCheckUnionM am) env tctx
+    (buse, b) <- runElCheckM (runElCheckUnionM bm) env tctx
+    liftEither $ (, f a b) <$> unionUsage ause buse
+
+instance (ElModeSpec m) => Monad (ElCheckUnionM m) where
+  am >>= f = ElCheckUnionM $ ElCheckM $ \env tctx -> do
+    (ause, a) <- runElCheckM (runElCheckUnionM am) env tctx
+    (buse, b) <- runElCheckM (runElCheckUnionM (f a)) env tctx
+    liftEither $ (, b) <$> unionUsage ause buse
+
 substM2checkM :: ElSubstM a -> ElCheckM m a
 substM2checkM = ElCheckM . const . const . mapExceptT (fmap (first TESubstitutionError)) . fmap (UEmpty,) . runElSubstM
 
@@ -561,7 +591,7 @@ getFromIctx :: (MonadError (ElTypingError m) em, ElModeSpec m) => ElIContext m -
 getFromIctx ictx x =
   case Seq.findIndexR (\(x', _, _) -> x == x') ictx of
     Just i  -> let (_, m, ientry) = ictx `Seq.index` i in pure (m, ientry)
-    Nothing -> throwError $ TENotInScope x
+    Nothing -> throwError $ TENotInScope x (Left ictx)
 
 getFromCheckingIctx :: (ElModeSpec m) => ElId -> ElCheckM m (m, ElIContextEntry m)
 getFromCheckingIctx x = do
@@ -576,7 +606,7 @@ data ElTypingEnvironmentEntry m
   = TEETypeDecl [(ElId, ElIKind m)]
   | TEEConDecl Int [ElId] [ElIType m] ElId
   | TEETermDecl (ElIType m)
-  deriving stock (Eq, Ord)
+  deriving stock (Eq, Ord, Show)
 
 data ElPostTypeEnvTop m
   = PTETopTermDef ElId (ElType m) (ElTerm m)
@@ -592,7 +622,7 @@ newtype ElTypingEnvironment m
   = ElTypingEnvironment
     { getElTypingEnvironment :: Seq (ElId, m, ElTypingEnvironmentEntry m)
     }
-  deriving (Eq, Ord, Semigroup, Monoid) via (Seq (ElId, m, ElTypingEnvironmentEntry m))
+  deriving (Eq, Ord, Show, Semigroup, Monoid) via (Seq (ElId, m, ElTypingEnvironmentEntry m))
 
 askEnv :: (ElModeSpec m) => ElCheckM m (ElTypingEnvironment m)
 askEnv = ElCheckM $ (pure .) . const . (UEmpty,)
@@ -648,7 +678,7 @@ lookupTermDecl x = lookupTypingEnvWithMapper x f
 getFromEnvWithMapper :: (MonadError (ElTypingError m) em, ElModeSpec m) => ElTypingEnvironment m -> ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> em (m, a)
 getFromEnvWithMapper env x f =
   case lookupEnvWithMapper env x f of
-    Nothing  -> throwError $ TENotInScope x
+    Nothing  -> throwError $ TENotInScope x (Right env)
     Just res -> pure res
 
 getFromTypingEnvWithMapper :: (ElModeSpec m) => ElId -> (ElTypingEnvironmentEntry m -> Maybe a) -> ElCheckM m (m, a)
@@ -682,13 +712,13 @@ getTermDecl x = getFromTypingEnvWithMapper x f
 data ElContextEntryUsage m
   = CEUKind m
   | CEUType m
-  deriving stock (Eq, Ord)
+  deriving stock (Eq, Ord, Show)
 
 newtype ElContextUsage m
   = ElContextUsage
     { getElContextUsage :: Seq (ElId, ElContextEntryUsage m)
     }
-  deriving (Eq, Ord) via (Seq (ElId, ElContextEntryUsage m))
+  deriving (Eq, Ord, Show) via (Seq (ElId, ElContextEntryUsage m))
 
 pattern UEmpty :: ElContextUsage m
 pattern UEmpty = ElContextUsage Empty
@@ -739,8 +769,61 @@ mergeUsage (use0 :+? (x, k)) use1
       use <- mergeUsage use0 use1
       pure $ use :+? (x, k)
 
+unionUsage :: (ElModeSpec m) => ElContextUsage m -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+unionUsage UEmpty            use1 = use1 <$ testContextUsageWk use1
+unionUsage (use0 :+* (x, k)) use1
+  | Just i <- Seq.findIndexR ((x ==) . fst) (getElContextUsage use1) = do
+      let (_, entryUse) = getElContextUsage use1 `Seq.index` i
+      case entryUse of
+        CEUKind k' -> do
+          testIsSameMode k k'
+        _ -> throwError $ TEVariableClassMismatch x
+      use <- unionUsage use0 . ElContextUsage . Seq.deleteAt i $ getElContextUsage use1
+      pure $ use :+* (x, k)
+  | otherwise = do
+      use <- unionUsage use0 use1
+      pure $ use :+* (x, k)
+unionUsage (use0 :+? (x, k)) use1
+  | Just i <- Seq.findIndexR ((x ==) . fst) (getElContextUsage use1) = do
+      let (_, entryUse) = getElContextUsage use1 `Seq.index` i
+      case entryUse of
+        CEUType k' -> testIsSameMode k k'
+        _ -> throwError $ TEVariableClassMismatch x
+      use <- unionUsage use0 . ElContextUsage . Seq.deleteAt i $ getElContextUsage use1
+      pure $ use :+? (x, k)
+  | otherwise = do
+      testIsWkMode k
+      use <- unionUsage use0 use1
+      pure $ use :+? (x, k)
+
+removeTypeV :: (ElModeSpec m) => (ElId, m) -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+removeTypeV _      UEmpty            = pure UEmpty
+removeTypeV (x, k) (use :+* (y, k'))
+  | x == y                           = use <$ testIsSameMode k k'
+  | otherwise                        = (:+* (y, k')) <$> removeTypeV (x, k) use
+removeTypeV (x, k) (use :+? (y, k')) = (:+? (y, k')) <$> removeTypeV (x, k) use
+
+removeTypeVs :: (ElModeSpec m) => Seq (ElId, m) -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+removeTypeVs vs use = foldlM (flip removeTypeV) use vs
+
+removeTermV :: (ElModeSpec m) => (ElId, m) -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+removeTermV (_, k) UEmpty            = UEmpty <$ testIsWkMode k
+removeTermV (x, k) (use :+* (y, k')) = (:+* (y, k')) <$> removeTermV (x, k) use
+removeTermV (x, k) (use :+? (y, k'))
+  | x == y                           = use <$ testIsSameMode k k'
+  | otherwise                        = (:+? (y, k')) <$> removeTermV (x, k) use
+
+removeTermVs :: (ElModeSpec m) => Seq (ElId, m) -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+removeTermVs vs use = foldlM (flip removeTermV) use vs
+
+removeVs :: (ElModeSpec m) => ElIContextHat m -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
+removeVs vs use = foldlM (\use' (x, k, isKi) -> if isKi then removeTypeV (x, k) use' else removeTermV (x, k) use') use vs
+
 listenUsage :: (ElModeSpec m) => ElCheckM m a -> ElCheckM m (ElContextUsage m, a)
 listenUsage am = ElCheckM $ \env -> fmap duplicate . runElCheckM am env
+
+-- debugUsage :: (ElModeSpec m) => ElCheckM m a -> ElCheckM m a
+-- debugUsage am = ElCheckM $ \env -> fmap (\x@(use, _) -> trace (show use) x) . runElCheckM am env
 
 useVariables :: ElContextUsage m -> ElCheckM m ()
 useVariables use = ElCheckM . const . const $ pure (use, ())
@@ -750,6 +833,36 @@ useTypeVariable x m = useVariables (UEmpty :+* (x, m))
 
 useTermVariable :: ElId -> m -> ElCheckM m ()
 useTermVariable x m = useVariables (UEmpty :+? (x, m))
+
+removeTypeVariable :: (ElModeSpec m) => (ElId, m) -> ElCheckM m a -> ElCheckM m a
+removeTypeVariable v am = ElCheckM $ \env -> mapExceptT (fmap helper) . runElCheckM am env
+  where
+    helper (Right (use, a)) = (, a) <$> removeTypeV v use
+    helper (Left err)       = Left err
+
+removeTypeVariables :: (ElModeSpec m) => Seq (ElId, m) -> ElCheckM m a -> ElCheckM m a
+removeTypeVariables vs am = ElCheckM $ \env -> mapExceptT (fmap helper) . runElCheckM am env
+  where
+    helper (Right (use, a)) = (, a) <$> removeTypeVs vs use
+    helper (Left err)       = Left err
+
+removeTermVariable :: (ElModeSpec m) => (ElId, m) -> ElCheckM m a -> ElCheckM m a
+removeTermVariable v am = ElCheckM $ \env -> mapExceptT (fmap helper) . runElCheckM am env
+  where
+    helper (Right (use, a)) = (, a) <$> removeTermV v use
+    helper (Left err)       = Left err
+
+removeTermVariables :: (ElModeSpec m) => Seq (ElId, m) -> ElCheckM m a -> ElCheckM m a
+removeTermVariables vs am = ElCheckM $ \env -> mapExceptT (fmap helper) . runElCheckM am env
+  where
+    helper (Right (use, a)) = (, a) <$> removeTermVs vs use
+    helper (Left err)       = Left err
+
+removeVariables :: (ElModeSpec m) => ElIContextHat m -> ElCheckM m a -> ElCheckM m a
+removeVariables vs am = ElCheckM $ \env -> mapExceptT (fmap helper) . runElCheckM am env
+  where
+    helper (Right (use, a)) = (, a) <$> removeVs vs use
+    helper (Left err)       = Left err
 
 ------------------------------------------------------------
 -- Equality checking / Unification
@@ -778,6 +891,7 @@ data ElTypingErrorModeOrdering
   | TEMOGE
   | TEMOLT
   | TEMOLE
+  deriving Show
 
 data ElTypingErrorTarget m
   = TETContext (ElContext m)
@@ -789,11 +903,12 @@ data ElTypingErrorTarget m
   | TETIKindUnification (ElIKind m) (ElIKind m)
   | TETITypeUnification (ElIType m) (ElIType m)
   | TETIContextUnification (ElIContext m) (ElIContext m)
+  deriving Show
 
 data ElTypingError m
   = TEImplementationError String
   | TEInvalidKind (ElIKind m)
-  | TENotInScope ElId
+  | TENotInScope ElId (Either (ElIContext m) (ElTypingEnvironment m))
   | TEVariableClassMismatch ElId
   | TEInvalidEntryForTypeVariable ElId (ElIContextEntry m)
   | TEInvalidMultipleUsage ElId m
@@ -843,77 +958,4 @@ data ElTypingError m
   | TESubstitutionEntryClassMismatch ElId (ElSubstEntry m)
   | TEDuplicatedContextEntryInWeakening (ElIContext m)
   | TESubstitutionError String
-
--- cutContext :: (ElModeSpec m) => ElContext m -> m -> Either String (ElContext m)
--- cutContext ctx m = do
---   unless (isAllWeakenable (HashMap.filter (not . (>=!! m). snd) ctx)) $
---     Left "A variable is not used but its mode does not allow weakening"
---   pure (HashMap.filter ((>=!! m) . snd) ctx)
---   where
---     isAllWeakenable :: (ElModeSpec m) => ElContext m -> Bool
---     isAllWeakenable = foldl helper True
-
---     helper :: (ElModeSpec m) => Bool -> ElContextEntry m -> Bool
---     helper False _       = False
---     helper True  (_, m') = modeSt m' MdStWk
-
--- mergeUsage :: (ElModeSpec m) => ElContext m -> ElContext m -> Either String (ElContext m)
--- mergeUsage ctx0 ctx1 = do
---   unless (isAllContractible (HashMap.intersection ctx0 ctx1)) $
---     Left "A variable is used twice but its mode does not allow contraction"
---   pure (HashMap.union ctx0 ctx1)
---   where
---     isAllContractible :: (ElModeSpec m) => ElContext m -> Bool
---     isAllContractible = foldl helper True
-
---     helper :: (ElModeSpec m) => Bool -> ElContextEntry m -> Bool
---     helper False _      = False
---     helper True  (_, m) = modeSt m MdStCo
-
--- removeVarUsage :: (ElModeSpec m) => ElContext m -> ElId -> m -> Either String (ElContext m)
--- removeVarUsage ctx x m = do
---   unless (modeSt m MdStWk || HashMap.member x ctx) $
---     Left $ "Variable " <> show x <> " is not used but its mode requires an usage"
---   pure $ HashMap.delete x ctx
-
--- errTypeMismatch :: (ElModeSpec m) => ElType m -> ElType m -> String
--- errTypeMismatch ty0 ty1 =
---   unlines
---   [ "Type mismatch: expected "
---   , showPrettyIndent 80 2 ty0
---   , " but get "
---   , showPrettyIndent 80 2 ty1
---   ]
-
--- errTypeWrongForm :: (ElModeSpec m) => ElType m -> String -> String
--- errTypeWrongForm ty form =
---   unlines
---   [ "Type mismatch: expected "
---   , "  " <> form
---   , " but get "
---   , showPrettyIndent 80 2 ty
---   ]
-
--- verifyModeEq :: (ElModeSpec m) => m -> m -> Either String ()
--- verifyModeEq m n = unless (m == n) $ Left $ concat
---   [ "Mode mismatch: expected "
---   , show (prettyMode m)
---   , " but get "
---   , show (prettyMode n)
---   ]
-
--- verifyModeGt :: (ElModeSpec m) => m -> m -> Either String ()
--- verifyModeGt m n = unless (m >!! n) $ Left $ concat
---   [ "Mode mismatch: expected a mode smaller than "
---   , show (prettyMode m)
---   , " but get "
---   , show (prettyMode n)
---   ]
-
--- verifyModeLt :: (ElModeSpec m) => m -> m -> Either String ()
--- verifyModeLt m n = unless (m <!! n) $ Left $ concat
---   [ "Mode mismatch: expected a mode greater than "
---   , show (prettyMode m)
---   , " but get "
---   , show (prettyMode n)
---   ]
+  deriving Show

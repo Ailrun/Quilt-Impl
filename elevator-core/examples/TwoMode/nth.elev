@@ -1,0 +1,20 @@
+data a ListP<P> = NilP | ConsP of a * a ListP;;
+
+head : (a : Type<P>) -> a ListP -> a = fun a xs ->
+  match xs with
+  | ConsP (x, xs') => x
+  end;;
+
+tail : (a : Type<P>) -> a ListP -> a ListP = fun a xs ->
+  match xs with
+  | ConsP (x, xs') => xs'
+  end;;
+
+nth : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> = fun n ->
+  match n with
+  | 0 => store (susp (a, xs . head a xs))
+  | _ =>
+    load nth_ = nth (n - 1) in
+    store (susp (a, xs . force nth_ @ (a, (tail a xs))))
+    end
+  end;;

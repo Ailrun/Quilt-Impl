@@ -22,7 +22,7 @@ class (Show m, Hashable m) => ElModeSpec m where
   readModeEither :: String -> Either String m
   -- Main specification
   (<=!!) :: m -> m -> Bool
-  modeSt :: m -> ElMdSt -> Bool
+  modeSig :: m -> ElMdSt -> Bool
   modePolyTime :: m -> Bool
 
 (<!!) :: (ElModeSpec m) => m -> m -> Bool
