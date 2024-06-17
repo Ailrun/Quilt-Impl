@@ -1,0 +1,8 @@
+pow n : Int<P> -> [x:Int<P> |- Int<P>] Up<C> Down<P> =
+  match n with
+  | 0 => store (susp (x . 1))
+  | n =>
+    load pow_ = pow (n - 1) in
+    store (susp (x . x * force pow_ @ (x)))
+    end
+  end;;
