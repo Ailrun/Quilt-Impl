@@ -24,6 +24,8 @@ extra-source-files: CHANGELOG.md
 library
   exposed-modules:
     Elevator.Evaluator
+    Elevator.ExampleModes.PrivacyModes
+    Elevator.ExampleModes.LinMeta
     Elevator.ExampleModes.TwoModes
     Elevator.ModeSpec
     Elevator.Parser

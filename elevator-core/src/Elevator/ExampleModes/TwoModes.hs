@@ -5,10 +5,10 @@ import Data.Hashable
 import Elevator.ModeSpec
 import GHC.Generics
 
-data TwoMode = MCode | MProg
+data TwoModes = MCode | MProg
   deriving (Eq, Show, Generic, Hashable)
 
-instance ElModeSpec TwoMode where
+instance ElModeSpec TwoModes where
   showMode MCode = "C"
   showMode MProg = "P"
 
