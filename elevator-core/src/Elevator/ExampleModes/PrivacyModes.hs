@@ -25,4 +25,4 @@ instance ElModeSpec PrivacyModes where
 
   modeSig _  _ = True
 
-  modePolyTime _ = False
+  modeEff _ = Nothing

@@ -1,17 +1,20 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE OverloadedLists    #-}
 module Elevator.Evaluator where
 
 import Control.Applicative        (Applicative (liftA2), liftA3)
 import Control.Monad.Except       (ExceptT, MonadError (..), runExceptT)
-import Control.Monad.State.Strict (MonadState (get), State, StateT (runStateT), modify)
+import Control.Monad.State.Strict (MonadState (get), State, StateT (runStateT),
+                                   modify)
 import Control.Monad.Trans        (MonadTrans (lift))
-import Data.Foldable              (toList, foldlM)
+import Data.Foldable              (foldlM, toList)
 import Data.HashMap.Strict        (HashMap)
 import Data.HashMap.Strict        qualified as HashMap
 import Data.List                  (foldl')
-import Data.Sequence              (Seq)
-import Data.Sequence              qualified as Seq
-import Data.Tuple.Extra           (fst3)
+import Data.Sequence              (Seq (..))
+import Data.Tuple.Extra           (first, fst3, second)
+import Data.Vector                (Vector)
+import Data.Vector                qualified as Vector
 import Elevator.ModeSpec
 import Elevator.Substitution
 import Elevator.Syntax
@@ -19,9 +22,12 @@ import Elevator.Syntax
 newtype ElEnv m = ElEnv { getElEnv :: HashMap ElId (Maybe (ElITerm m)) }
   deriving stock Show
 
+newtype ElHeap m = ElHeap { getElHeap :: (Integer, HashMap Integer (Vector (ElITerm m))) }
+  deriving stock Show
+
 evalUnderModule :: (ElModeSpec m) => ElIModule m -> ElITerm m -> ElEvalM m (ElITerm m)
 evalUnderModule (ElIModule _imps tops) t = do
-  modify (const (buildEnv tops))
+  modifyEnv (const (buildEnv tops))
   eval t
   where
     buildEnv = ElEnv . foldl' envHelper HashMap.empty
@@ -29,24 +35,27 @@ evalUnderModule (ElIModule _imps tops) t = do
     envHelper envMap ITopTypeDef{}          = envMap
 
 checkNormHead :: ElITerm m -> Bool
-checkNormHead ITmData{}  = True
-checkNormHead ITmTrue    = True
-checkNormHead ITmFalse   = True
-checkNormHead (ITmInt _) = True
-checkNormHead ITmTuple{} = True
-checkNormHead ITmSusp{}  = True
-checkNormHead ITmStore{} = True
-checkNormHead ITmLam{}   = True
-checkNormHead ITmTLam{}  = True
-checkNormHead _          = False
+checkNormHead ITmData{}     = True
+checkNormHead ITmArrayTag{} = True
+checkNormHead ITmTrue       = True
+checkNormHead ITmFalse      = True
+checkNormHead (ITmInt _)    = True
+checkNormHead ITmTuple{}    = True
+checkNormHead ITmSusp{}     = True
+checkNormHead ITmStore{}    = True
+checkNormHead ITmLam{}      = True
+checkNormHead ITmTLam{}     = True
+checkNormHead _             = False
 
 eval :: (ElModeSpec m) => ElITerm m -> ElEvalM m (ElITerm m)
 eval (ITmVar x) = do
-  env <- get
+  env <- getEnv
   case envLookup x env of
     Just (Just t) -> eval t
     Just Nothing  -> pure $ ITmVar x
     Nothing       -> throwError $ "Variable \"" <> show x <> "\" has no reference in " <> show env
+eval (ITmBuiltIn bi) = evalBuiltIn bi []
+eval (ITmArrayTag n) = pure $ ITmArrayTag n
 eval (ITmData c cn args) = ITmData c cn <$> traverse eval args
 eval ITmTrue = pure ITmTrue
 eval ITmFalse = pure ITmFalse
@@ -96,6 +105,8 @@ eval (ITmForce h t sub) = do
 eval (ITmStore h t) = ITmStore h <$> eval t
 eval (ITmLam x ty t) = pure $ ITmLam x ty t
 eval (ITmTLam x ki t) = pure $ ITmTLam x ki t
+eval t
+  | Just (bi, spine) <- findBuiltInSpine t = evalBuiltIn bi spine
 eval (ITmApp t0 t1) = do
   r0 <- eval t0
   r1 <- eval t1
@@ -110,7 +121,7 @@ eval (ITmTApp t0 ty1) = do
   r0 <- eval t0
   case r0 of
     ITmTLam x _ t -> do
-      t' <- substM2evalM $ applySubstTerm (Seq.singleton (ISEType ty1)) (Seq.singleton (x, True)) t
+      t' <- substM2evalM $ applySubstTerm [ISEType ty1] [(x, True)] t
       eval t'
     _
       | checkNormHead r0 -> throwError $ "Non-type-function result \"" <> show r0 <> "\" for application"
@@ -136,8 +147,74 @@ matching (IPatData _ cn pats) (ITmData _ cn' args) b
   | cn == cn'                                        = foldlM (\b' (pat, arg) -> matching pat arg b') b $ zip pats args
 matching _                    _                    _ = throwError "Pattern mismatching"
 
+findBuiltInSpine :: ElITerm m -> Maybe (ElBuiltIn, ElISubst m)
+findBuiltInSpine (ITmApp t0 t1)  = fmap (:|> ISETerm t1) <$> findBuiltInSpine t0
+findBuiltInSpine (ITmTApp t0 k1) = fmap (:|> ISEType k1) <$> findBuiltInSpine t0
+findBuiltInSpine (ITmBuiltIn bi) = pure (bi, [])
+findBuiltInSpine _               = Nothing
+
+evalBuiltIn :: (ElModeSpec m) => ElBuiltIn -> ElISubst m -> ElEvalM m (ElITerm m)
+evalBuiltIn BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm t0, ISETerm t1, ISETerm t2] = do
+  r0 <- eval t0
+  r1 <- eval t1
+  r2 <- eval t2
+  case r0 of
+    ITmInt n -> do
+      tag <- heapAllocArray (fromInteger n) r1
+      r <- eval (ITmApp r2 (ITmArrayTag tag))
+      case r of
+        ITmTuple [ITmArrayTag tag', v] -> v <$ heapDeleteArrayOf tag'
+        _
+          | checkNormHead r -> throwError "Invalid result of the callback for \"withAlloc\""
+          | otherwise       -> pure r
+    _
+      | checkNormHead r0 -> throwError "Invalid result for the size argument of \"withAlloc\""
+      | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm r0, ISETerm r1, ISETerm r2]
+evalBuiltIn BIWithAlloc _                                                              = throwError "Invalid call of built-in \"withAlloc\""
+evalBuiltIn BIWrite     [ISEType ty0, ISETerm t0, ISETerm t1, ISETerm t2]              = do
+  r0 <- eval t0
+  r1 <- eval t1
+  r2 <- eval t2
+  case r0 of
+    ITmInt n ->
+      case r2 of
+        ITmArrayTag tag -> do
+          heapModifyArray tag (`Vector.update` [(fromInteger n, r1)])
+          pure $ ITmArrayTag tag
+        _
+          | checkNormHead r2 -> throwError "Invalid result for the array argument of \"write\""
+          | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1, ISETerm r2]
+    _
+      | checkNormHead r0 -> throwError "Invalid result for the index argument of \"write\""
+      | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1, ISETerm r2]
+evalBuiltIn BIWrite     _                                                              = throwError "Invalid call of built-in \"write\""
+evalBuiltIn BIRead      [ISEType ty0, ISETerm t0, ISETerm t1]                          = do
+  r0 <- eval t0
+  r1 <- eval t1
+  case r0 of
+    ITmInt n ->
+      case r1 of
+        ITmArrayTag tag -> do
+          array <- heapGetArray tag
+          pure $ ITmTuple [array Vector.! fromInteger n, ITmArrayTag tag]
+        _
+          | checkNormHead r1 -> throwError "Invalid result for the array argument of \"write\""
+          | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
+    _
+      | checkNormHead r0 -> throwError "Invalid result for the index argument of \"write\""
+      | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
+evalBuiltIn BIRead      _                                                              = throwError "Invalid call of built-in \"read\""
+
+buildBuiltInSpine :: ElBuiltIn -> ElISubst m -> ElITerm m
+buildBuiltInSpine bi = foldl app (ITmBuiltIn bi)
+  where
+    app t0 (ISETerm t1)  = ITmApp t0 t1
+    app t0 (ISEType ty1) = ITmTApp t0 ty1
+
 refineTemplate :: (ElModeSpec m) => m -> ElITerm m -> ElEvalM m (ElITerm m)
 refineTemplate _ (ITmVar x)            = pure $ ITmVar x
+refineTemplate _ (ITmBuiltIn bi)       = pure $ ITmBuiltIn bi
+refineTemplate _ (ITmArrayTag n)       = pure $ ITmArrayTag n
 refineTemplate n (ITmData c cn args)   = ITmData c cn <$> traverse (refineTemplate n) args
 refineTemplate _ ITmTrue               = pure ITmTrue
 refineTemplate _ ITmFalse              = pure ITmFalse
@@ -236,26 +313,57 @@ computeBop OpGt n0 n1
   | n0 > n1   = ITmTrue
   | otherwise = ITmFalse
 
+getEnv :: ElEvalM m (ElEnv m)
+getEnv = fst <$> get
+
+modifyEnv :: (ElEnv m -> ElEnv m) -> ElEvalM m ()
+modifyEnv = modify . first
+
+getHeap :: ElEvalM m (ElHeap m)
+getHeap = snd <$> get
+
+modifyHeap :: (ElHeap m -> ElHeap m) -> ElEvalM m ()
+modifyHeap = modify . second
+
+heapAllocArray :: Int -> ElITerm m -> ElEvalM m Integer
+heapAllocArray n a = do
+  modifyHeap (\(ElHeap (nid, h)) -> ElHeap (succ nid, HashMap.insert nid (Vector.replicate n a) h))
+  ElHeap (snid, _) <- getHeap
+  pure (snid - 1)
+
+heapGetArray :: Integer -> ElEvalM m (Vector (ElITerm m))
+heapGetArray tag = do
+  ElHeap (_, h) <- getHeap
+  case HashMap.lookup tag h of
+    Just array -> pure array
+    Nothing    -> throwError $ "Invalid heap location " <> show tag
+
+heapModifyArray :: Integer -> (Vector (ElITerm m) -> Vector (ElITerm m)) -> ElEvalM m ()
+heapModifyArray tag f = modifyHeap (\(ElHeap (nid, h)) -> ElHeap (nid, HashMap.adjust f tag h))
+
+heapDeleteArrayOf :: Integer -> ElEvalM m ()
+heapDeleteArrayOf tag = modifyHeap (\(ElHeap (nid, h)) -> ElHeap (nid, HashMap.delete tag h))
+
 envInsert :: ElId -> ElITerm m -> ElEvalM m ()
-envInsert x t = modify (ElEnv . HashMap.insert x (Just t) . getElEnv)
+envInsert x t = modifyEnv (ElEnv . HashMap.insert x (Just t) . getElEnv)
 
 envEmptyInsert :: ElId -> ElEvalM m ()
-envEmptyInsert x = modify (ElEnv . HashMap.insert x Nothing . getElEnv)
+envEmptyInsert x = modifyEnv (ElEnv . HashMap.insert x Nothing . getElEnv)
 
 envExtend :: ElIContextHat m -> ElEvalM m ()
 envExtend ctxh = envExtendWithIds (fmap fst3 ctxh)
 
 envExtendWithIds :: Seq ElId -> ElEvalM m ()
-envExtendWithIds xs = modify (ElEnv . HashMap.union (HashMap.fromList . toList $ fmap (, Nothing) xs) . getElEnv)
+envExtendWithIds xs = modifyEnv (ElEnv . HashMap.union (HashMap.fromList . toList $ fmap (, Nothing) xs) . getElEnv)
 
 envLookup :: ElId -> ElEnv m -> Maybe (Maybe (ElITerm m))
 envLookup x = HashMap.lookup x . getElEnv
 
-newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m) (ExceptT String (State Integer)) a }
-  deriving newtype (Functor, Applicative, Monad, MonadState (ElEnv m), MonadError String)
+newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m, ElHeap m) (ExceptT String (State Integer)) a }
+  deriving newtype (Functor, Applicative, Monad, MonadState (ElEnv m, ElHeap m), MonadError String)
 
 substM2evalM :: ElSubstM a -> ElEvalM m a
 substM2evalM = ElEvalM . lift . runElSubstM
 
-fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String (a, ElEnv m))
-fullRunElEvalM = runExceptT . flip runStateT (ElEnv HashMap.empty) . runElEvalM
+fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String (a, (ElEnv m, ElHeap m)))
+fullRunElEvalM = runExceptT . flip runStateT (ElEnv HashMap.empty, ElHeap (0, HashMap.empty)) . runElEvalM

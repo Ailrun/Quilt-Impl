@@ -18,12 +18,13 @@ instance ElModeSpec LinMeta where
   readModeEither "GF" = Right MGF
   readModeEither _   = Left "Should be either <C>, <GC>, or <GF>"
 
-  MGC <=!! MC  = True
-  MGF <=!! MC  = True
-  MGF <=!! MGC = True
-  m   <=!! n   = m == n
+  MGC <=!! MCode = True
+  MGF <=!! MCode = True
+  MGF <=!! MGC   = True
+  m   <=!! n     = m == n
 
-  modeSig GF _ = False
-  modeSig _  _ = True
+  modeSig MGF _ = False
+  modeSig _   _ = True
 
-  modePolyTime _ = False
+  modeEff MGF = Just MGC
+  modeEff _   = Nothing

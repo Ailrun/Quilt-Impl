@@ -21,7 +21,7 @@ instance ElModeSpec TwoModes where
 
   modeSig _ _ = True
 
-  modePolyTime _ = False
+  modeEff _ = Nothing
 
 -- Example Program
 -- > ITmApp (ITmLam (IPatVar "x") (ITyArr (ITyInt MProg) (ITyInt MProg)) (ITmVar "x")) (ITmLam (IPatVar "x") (ITyInt MProg) (ITmVar "x"))

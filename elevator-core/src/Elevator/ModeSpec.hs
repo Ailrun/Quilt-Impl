@@ -23,7 +23,7 @@ class (Show m, Hashable m) => ElModeSpec m where
   -- Main specification
   (<=!!) :: m -> m -> Bool
   modeSig :: m -> ElMdSt -> Bool
-  modePolyTime :: m -> Bool
+  modeEff :: m -> Maybe m
 
 (<!!) :: (ElModeSpec m) => m -> m -> Bool
 x <!! y = not (y <=!! x) && x <=!! y

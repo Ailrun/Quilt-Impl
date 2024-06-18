@@ -47,6 +47,7 @@ applySubstType sub dom (ITyData argTys c) = flip ITyData c <$> traverse (applySu
 applySubstType _   _   (ITyBool m) = pure $ ITyBool m
 applySubstType _   _   (ITyInt m) = pure $ ITyInt m
 applySubstType sub dom (ITyProd itemTys) = ITyProd <$> traverse (applySubstType sub dom) itemTys
+applySubstType sub dom (ITyArray m ty) = ITyArray m <$> applySubstType sub dom ty
 applySubstType sub dom (ITyUp m l ctx ty) = do
   (ctx', ty') <- freshIContextInType ctx ty
   liftA2
@@ -79,6 +80,8 @@ applySubstTerm sub dom (ITmVar x)            =
     Just (ISETerm t)  -> pure t
     Just (ISEType ty) -> throwError $ "Term variable " <> show x <> " cannot be instantiated with a type\n" <> showPrettyIndent 80 4 ty
     _                 -> pure $ ITmVar x
+applySubstTerm _   _   (ITmArrayTag n)       = pure $ ITmArrayTag n
+applySubstTerm _   _   (ITmBuiltIn bi)       = pure $ ITmBuiltIn bi
 applySubstTerm sub dom (ITmData c cn args)   = ITmData c cn <$> traverse (applySubstTerm sub dom) args
 applySubstTerm _   _   ITmTrue               = pure ITmTrue
 applySubstTerm _   _   ITmFalse              = pure ITmFalse

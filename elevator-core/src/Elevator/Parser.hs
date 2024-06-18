@@ -144,7 +144,7 @@ parsePattern :: (ElModeSpec m) => ElParser (ElPattern m)
 parsePattern =
   choice
     [ keyword "load" $> PatLoad <*> parseAtomicPattern
-    , liftA2 PatData parseUpperId parseDataArgPatterns
+    , try $ liftA2 PatData parseUpperId parseDataArgPatterns
     , parseAtomicPattern
     ]
   <?> "pattern"
@@ -267,9 +267,13 @@ parseUnitTerm =
     [ TmInt <$> lexeme MPCL.decimal
     , keyword "True" $> TmTrue
     , keyword "False" $> TmFalse
-    , TmVar <$> parseLowerId
+    , build <$> parseLowerId
     , flip TmData [] <$> parseUpperId
     ]
+  where
+    build x
+      | Just bi <- toBuiltIn x = TmBuiltIn bi
+      | otherwise              = TmVar x
 
 parseAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
 parseAmbi =
@@ -346,12 +350,13 @@ parseDelayedType =
 
 parsePostType :: (ElModeSpec m) => ElParser (ElType m)
 parsePostType =
-  liftA2 (foldr ($)) parseTupleArgDataType (many parsePostOp)
+  liftA2 (foldl' (flip ($))) parseTupleArgDataType (many parsePostOp)
   where
     parsePostOp =
       choice
         [ keyword "Up" $> flip TyUp Seq.empty <*> parseMode <?> "Upshift of the type"
         , keyword "Down" $> TyDown <*> parseMode <?> "Downshift of the type"
+        , keyword "Array" $> TyArray <?> "Array of the type"
         , flip (TyData . pure) <$> parseUpperId <?> "type constructor"
         ]
 
@@ -443,6 +448,7 @@ toplevelDelimiter = symbol ";;" <?> "top-level delimiter \";;\""
 keywords :: [Text]
 keywords =
   [ "Type"
+  , "Array"
   , "Up"
   , "Down"
   , "Int"

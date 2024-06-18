@@ -37,6 +37,7 @@ module Elevator.Syntax
   , icontext2idomain
   , icontextHat2idomain
 
+  , ElBuiltIn(..)
   , ElTerm(..)
   , ElITerm(..)
 
@@ -62,16 +63,22 @@ module Elevator.Syntax
   , icontext2context
   , icontextHat2contextHat
   , isubst2subst
+
+  , toBuiltIn
+  , fromBuiltIn
+  , typeOfBuiltIn
   ) where
 
-import Data.Bifunctor   (Bifunctor (bimap))
-import Data.Hashable    (Hashable)
-import Data.Sequence    (Seq)
-import Data.String      (IsString (fromString))
-import Data.Text        (Text)
-import Data.Text        qualified as Text
-import Data.Tuple.Extra (fst3)
-import Prettyprinter    (Pretty)
+import Data.Bifunctor    (Bifunctor (bimap))
+import Data.Hashable     (Hashable)
+import Data.Sequence     (Seq)
+import Data.Sequence     qualified as Seq
+import Data.String       (IsString (fromString))
+import Data.Text         (Text)
+import Data.Text         qualified as Text
+import Data.Tuple.Extra  (fst3)
+import Elevator.ModeSpec (ElModeSpec (modeEff))
+import Prettyprinter     (Pretty)
 
 newtype ElId = ElId Text
   deriving (Hashable, Eq, Ord, Show, Semigroup, IsString, Pretty) via Text
@@ -132,6 +139,7 @@ data ElType m
   | TyBool m
   | TyInt m
   | TyProd [ElType m]
+  | TyArray (ElType m)
   -- | "m" is the mode of the entire type
   | TyUp m (ElContext m) (ElType m)
   -- | "m" is the mode of the entire type
@@ -151,6 +159,7 @@ data ElIType m
   | ITyBool m
   | ITyInt m
   | ITyProd [ElIType m]
+  | ITyArray m (ElIType m)
   -- | The first "m" is the mode of the entire type
   -- and the second "m" is the mode of the inner type
   | ITyUp m m (ElIContext m) (ElIType m)
@@ -194,8 +203,16 @@ icontext2idomain = fmap (\(x, _, ce) -> (x, isCEKind ce))
 icontextHat2idomain :: ElIContextHat m -> ElIDomain m
 icontextHat2idomain = fmap (\(x, _, isKi) -> (x, isKi))
 
+data ElBuiltIn
+  = BIWithAlloc
+  | BIWrite
+  | BIRead
+  deriving stock (Eq, Ord, Show)
+
 data ElTerm m
   = TmVar ElId
+  | TmArrayTag Integer
+  | TmBuiltIn ElBuiltIn
   | TmData ElId [ElTerm m]
   | TmTrue
   | TmFalse
@@ -215,6 +232,8 @@ data ElTerm m
 
 data ElITerm m
   = ITmVar ElId
+  | ITmArrayTag Integer
+  | ITmBuiltIn ElBuiltIn
   | ITmData ElId Int [ElITerm m]
   | ITmTrue
   | ITmFalse
@@ -364,6 +383,7 @@ instance FromInternal (ElType m) where
   fromInternal (ITyBool k) = TyBool k
   fromInternal (ITyInt k) = TyInt k
   fromInternal (ITyProd itys) = TyProd (fromInternal <$> itys)
+  fromInternal (ITyArray _ ity) = TyArray (fromInternal ity)
   fromInternal (ITyUp k _ ictx ity) = TyUp k (icontext2context ictx) (fromInternal ity)
   fromInternal (ITyDown k _ ity) = TyDown k (fromInternal ity)
   fromInternal (ITyArr ity0 ity1) = TyArr (fromInternal ity0) (fromInternal ity1)
@@ -377,6 +397,8 @@ instance FromInternal (ElContextEntry m) where
 instance FromInternal (ElTerm m) where
   type Internal (ElTerm m) = ElITerm m
   fromInternal (ITmVar x) = TmVar x
+  fromInternal (ITmArrayTag n) = TmArrayTag n
+  fromInternal (ITmBuiltIn x) = TmBuiltIn x
   fromInternal (ITmData x _ its) = TmData x (fromInternal <$> its)
   fromInternal ITmTrue = TmTrue
   fromInternal ITmFalse = TmFalse
@@ -403,3 +425,53 @@ instance FromInternal (ElPattern m) where
   fromInternal (IPatTuple pats)    = PatTuple (fromInternal <$> pats)
   fromInternal (IPatLoad pat)      = PatLoad (fromInternal pat)
   fromInternal (IPatData c _ pats) = PatData c (fromInternal <$> pats)
+
+toBuiltIn :: ElId -> Maybe ElBuiltIn
+toBuiltIn "withAlloc" = Just BIWithAlloc
+toBuiltIn "write"     = Just BIWrite
+toBuiltIn "read"      = Just BIRead
+toBuiltIn _           = Nothing
+
+fromBuiltIn :: ElBuiltIn -> ElId
+fromBuiltIn BIWithAlloc = "withAlloc"
+fromBuiltIn BIWrite     = "write"
+fromBuiltIn BIRead      = "read"
+
+typeOfBuiltIn :: (ElModeSpec m) => m -> ElBuiltIn -> Maybe (ElIType m)
+typeOfBuiltIn k BIWithAlloc = do
+  h <- modeEff k
+  pure
+    $ ITyForall "a" (IKiUp h Seq.empty (IKiType k))
+    $ ITyForall "b" (IKiUp h Seq.empty (IKiType k))
+    $ ITyArr (ITyInt k)
+    $ ITyArr (bangA h)
+    $ ITyArr (ITyArr (array h) (ITyProd [array h, bangB h]))
+    $ bangB h
+  where
+    bang h ty = ITyDown k h (ITyUp h k Seq.empty ty)
+    bangA h = bang h (ITyForce h (ITyVar "a") Seq.empty)
+    bangB h = bang h (ITyForce h (ITyVar "b") Seq.empty)
+    array h = ITyArray k (ITyForce h (ITyVar "a") Seq.empty)
+typeOfBuiltIn k BIWrite = do
+  h <- modeEff k
+  pure
+    $ ITyForall "a" (IKiUp h Seq.empty (IKiType k))
+    $ ITyArr (ITyInt k)
+    $ ITyArr (bangA h)
+    $ ITyArr (array h)
+    $ array h
+  where
+    bang h ty = ITyDown k h (ITyUp h k Seq.empty ty)
+    bangA h = bang h (ITyForce h (ITyVar "a") Seq.empty)
+    array h = ITyArray k (ITyForce h (ITyVar "a") Seq.empty)
+typeOfBuiltIn k BIRead = do
+  h <- modeEff k
+  pure
+    $ ITyForall "a" (IKiUp h Seq.empty (IKiType k))
+    $ ITyArr (ITyInt k)
+    $ ITyArr (array h)
+    $ ITyProd [bangA h, array h]
+  where
+    bang h ty = ITyDown k h (ITyUp h k Seq.empty ty)
+    bangA h = bang h (ITyForce h (ITyVar "a") Seq.empty)
+    array h = ITyArray k (ITyForce h (ITyVar "a") Seq.empty)

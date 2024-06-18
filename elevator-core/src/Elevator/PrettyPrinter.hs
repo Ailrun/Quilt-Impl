@@ -57,6 +57,7 @@ prettyType _ (TyProd tys) = prettyProdLike 2 tys
 prettyType _ (TyData [] x) = pretty x
 prettyType p (TyData [ty] x) = parensIf (p > 2) $ prettyType 3 ty <+> pretty x
 prettyType p (TyData tys x) = parensIf (p > 2) $ prettyProdLike 2 tys <+> pretty x
+prettyType p (TyArray ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Array"
 prettyType p (TyUp k Empty ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Up" <> prettyMode k
 prettyType p (TyUp k ctx ty) = parensIf (p > 2) $ brackets (prettyContext ctx <+> turnstile <+> pretty ty) <+> "Up" <> prettyMode k
 prettyType p (TyDown k ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Down" <> prettyMode k
@@ -99,6 +100,8 @@ instance (ElModeSpec m) => Pretty (ElTerm m) where
 
 prettyTerm :: (ElModeSpec m) => Int -> ElTerm m -> Doc ann
 prettyTerm _ (TmVar x) = pretty x
+prettyTerm _ (TmArrayTag n) = "<array@" <> pretty n <> ">"
+prettyTerm _ (TmBuiltIn bi) = pretty (fromBuiltIn bi)
 prettyTerm _ TmTrue = "True"
 prettyTerm _ TmFalse = "False"
 prettyTerm p (TmIte t t0 t1) =
