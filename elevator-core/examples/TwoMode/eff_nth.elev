@@ -5,18 +5,18 @@ head : (a : Type<P>) -> a ListP -> a = fun a xs ->
   | ConsP (x, xs) => x
   end;;
 
-tail : (a : Type<P>) -> a ListP -> a ListP = fun a xs ->
+tail a xs : (a : Type<P>) -> a ListP -> a ListP =
   match xs with
   | ConsP (x, xs') => xs'
   end;;
 
-nthHelper : Int<C> -> [a : Type<P>, xs : a ListP |- a] Up <C> = fun n ->
+nthHelper n : Int<C> -> [a : Type<P>, xs : a ListP |- a] Up <C> =
   match n with
   | 0 => susp (a, xs . head a xs)
   | _ => susp (a, xs . force (nthHelper (n - 1)) @ (a, (tail a xs)))
   end;;
 
-convertNat : Int<P> -> Int<C> Down <P> = fun n ->
+convertNat n : Int<P> -> Int<C> Down <P> =
   match n with
   | 0 => store 0
   | _ =>
@@ -25,7 +25,7 @@ convertNat : Int<P> -> Int<C> Down <P> = fun n ->
     end
   end;;
 
-nth : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> = fun n'' ->
-  load nC = convertNat n'' in
+nth n : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> =
+  load nC = convertNat n in
   store (nthHelper nC)
   end;;

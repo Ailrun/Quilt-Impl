@@ -1,0 +1,53 @@
+data a List <GF> = Nil | Cons of a * a List;;
+data a ListC <C> = Nil | Cons of a * a ListC;;
+
+mapLinMetaGen a xs : (a : Type<GF> Up<C>)
+                   -> (force a) Up<C> ListC
+                   -> [ b : Type<GF> Up<GC>
+                      , f : (force a -> force b) Up<GC> Down<GF>
+                      |- (force b) List ] Up<C> =
+  match xs with
+  | Nil => susp (b, f . load f_ = f in Nil end)
+  | Cons (x, xs) =>
+      susp (b, f .
+        load f_ = f in
+          Cons ((force f_) (force x), force (mapLinMetaGen a xs) @ (b, store f_))
+        end)
+  end;;
+
+convertList a lift xs : (a : Type<GF> Up<C>)
+                      -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
+                      -> (force a) List
+                      -> (force a) Up<C> ListC Down<GF> =
+  match xs with
+  | Nil => load lift_ = lift in store Nil end
+  | Cons (x, xs) =>
+      load lift_ = lift in
+        load x_ = (force lift_) x in
+          load xs_ = convertList a (store lift_) xs in
+          store (Cons (x_, xs_))
+          end
+        end
+      end
+  end;;
+
+mapLinMeta a lift xs : (a : Type<GF> Up<C>)
+                     -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
+                     -> (force a) List
+                     -> [ b : Type<GF> Up<GC>
+                        , f : (force a -> force b) Up<GC> Down<GF>
+                        |- (force b) List ] Up<C> Down<GF> =
+  load xs_ = convertList a lift xs in
+  store (susp (b, f . force (mapLinMetaGen a xs_) @ (b, f)))
+  end;;
+
+exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
+
+liftInt n : Int<GF> -> Int<GF> Up<C> Down<GF> =
+  match n with
+  | 0 => store (susp 0)
+  | n =>
+     load n_ = liftInt (n - 1) in
+     store (susp (1 + force n_))
+     end
+  end;;

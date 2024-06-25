@@ -1,0 +1,33 @@
+data a List <GF> = Nil | Cons of a * a List;;
+
+mapLinMeta a lift xs : (a : Type<GF> Up<C>)
+                     -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
+                     -> (force a) List
+                     -> [ b : Type<GF> Up<GC>
+                        , f : (force a -> force b) Up<GC> Down<GF>
+                        |- (force b) List ] Up<C> Down<GF> =
+  match xs with
+  | Nil => load lift_ = lift in store (susp (b, f . load f_ = f in Nil end)) end
+  | Cons (x, xs) =>
+      load lift_ = lift in
+        load x_ = (force lift_) x in
+          load map_ = mapLinMeta a (store lift_) xs in
+          store (susp (b, f .
+            load f_ = f in
+              Cons ((force f_) (force x_), force map_ @ (b, store f_))
+            end))
+          end
+        end
+      end
+  end;;
+
+exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
+
+liftInt n : Int<GF> -> Int<GF> Up<C> Down<GF> =
+  match n with
+  | 0 => store (susp 0)
+  | n =>
+     load n_ = liftInt (n - 1) in
+     store (susp (1 + force n_))
+     end
+  end;;

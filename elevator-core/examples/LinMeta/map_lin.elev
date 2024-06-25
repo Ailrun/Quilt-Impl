@@ -1,0 +1,16 @@
+data a List <GF> = Nil | Cons of a * a List;;
+
+mapLin a b f xs : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>)
+                -> (force a -> force b) Up<GC> Down<GF>
+                -> (force a) List
+                -> (force b) List =
+  match xs with
+  | Nil =>
+      load f_ = f in Nil end
+  | Cons (x, xs) =>
+      load f_ = f in
+      Cons ((force f_) x, mapLin a b (store f_) xs)
+      end
+  end;;
+
+exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
