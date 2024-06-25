@@ -1,0 +1,41 @@
+withAllocGF a b n v f : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> ((force a) Array -> ((force a) Array * (force b) Up<GC> Down<GF>)) -> (force b) Up<GC> Down<GF> =
+  (withAlloc : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> ((force a) Array -> ((force a) Array * (force b) Up<GC> Down<GF>)) -> (force b) Up<GC> Down<GF>)
+    a b n v f;;
+
+readGF a n arr : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Array -> ((force a) Up<GC> Down<GF> * (force a) Array) =
+  (read : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Array -> ((force a) Up<GC> Down<GF> * (force a) Array))
+    a n arr;;
+
+writeGF a n v arr : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> (force a) Array -> (force a) Array =
+  (write : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> (force a) Array -> (force a) Array)
+    a n v arr;;
+
+mapArrayHelper n : Int<GF>
+                 -> [ i : Int<GF> Up<GC>
+                    , a : Type<GF> Up<GC>
+                    , xs : (force a) Array
+                    , f : (force a) Up<GC> -> (force a) Up<GC>
+                    |- (force a) Array ] Up<C> Down<GF> =
+  match n with
+  | 0 => store (susp (i, a, xs, f . xs))
+  | n =>
+    load ys_ = mapArrayHelper (n - 1) in
+    store (susp (i, a, xs, f .
+      let (x, xs1) = readGF a (force i) xs in
+        load x_ = x in
+          let xs2 = writeGF a (force i) (store (f x_)) xs1 in
+            force ys_ @ (susp (1 + force i), a, xs2, f)
+          end
+        end
+      end))
+    end
+  end;;
+
+mapArray n : Int<GF>
+         -> [ a : Type<GF> Up<GC>
+            , xs : (force a) Array
+            , f : (force a) Up<GC> -> (force a) Up<GC>
+            |- (force a) Array ] Up<C> Down<GF> =
+  load ys_ = mapArrayHelper n in
+  store (susp (a, xs, f . force ys_ @ (susp 0, a, xs, f)))
+  end;;

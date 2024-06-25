@@ -498,7 +498,7 @@ testContextEntryUsageGE k (CEUKind m) = testIsGEMode m k
 testContextEntryUsageGE k (CEUType m) = testIsGEMode m k
 
 testContextUsageWk ::  (MonadError (ElTypingError m) em, ElModeSpec m) => ElContextUsage m -> em ()
-testContextUsageWk = traverse_ (flip whenJust testIsWkMode . getCEUType . snd) . getElContextUsage
+testContextUsageWk = traverse_ (\(x, k) -> withError (TEFor $ TETVariable x) $ whenJust (getCEUType k) testIsWkMode) . getElContextUsage
 
 testIsGEMode :: (MonadError (ElTypingError m) em, ElModeSpec m) => m -> m -> em ()
 testIsGEMode m k = unless (m >=!! k) $ throwError $ TEModeOrderFailure TEMOGE m k
