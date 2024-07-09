@@ -1,14 +1,14 @@
 {-# LANGUAGE DeriveAnyClass    #-}
-module Elevator.ExampleModes.PrivacyModes where
+module Elevator.ExampleModes.InfoFlowModes where
 
 import Data.Hashable
 import Elevator.ModeSpec
 import GHC.Generics
 
-data PrivacyModes = MCode | MProg | MSecure
+data InfoFlowModes = MCode | MProg | MSecure
   deriving (Eq, Show, Generic, Hashable)
 
-instance ElModeSpec PrivacyModes where
+instance ElModeSpec InfoFlowModes where
   showMode MCode = "C"
   showMode MProg = "P"
   showMode MSecure = "S"

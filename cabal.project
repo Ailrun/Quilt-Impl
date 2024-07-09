@@ -1,7 +1,5 @@
 packages:
-    ./elevator-core
-    ./elevator-lambda-box
-    ./elevator-linear
+    .
 
 index-state: 2024-04-04T18:06:40Z
 
