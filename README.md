@@ -5,6 +5,12 @@
 - GHC 9.2.8
 - Cabal 3.8 or higher (preferably Cabal 3.10.3)
 
+### Usage
+
+```
+./elevatori <mode spec> [<optional module to load>]
+```
+
 ### Example Modes
 We provide the following example modes
 - `TwoModes`  
