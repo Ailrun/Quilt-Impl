@@ -38,13 +38,16 @@ them for normal variables.
 
 ### Caveat
 
-Omitting identity substitution is not yet supported. For example,
-```
-let x = susp(y . y) in
-susp(y . force x)
-```
-does not (yet) work. This requires
-```
-let x = susp(y . y) in
-susp(y . force x @ (y))
-```
+- When parse error happens in the type signature of a term definition,
+  it reports the beginning of the term identifier.
+- Currently a type error does not produce a pretty message.
+- Omitting identity substitution is not yet supported. For example,
+  ```
+  let x = susp(y . y) in
+  susp(y . force x)
+  ```
+  does not (yet) work. This requires
+  ```
+  let x = susp(y . y) in
+  susp(y . force x @ (y))
+  ```
