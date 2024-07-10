@@ -22,10 +22,8 @@ convertNat n : Int<P> -> Int<C> Down <P> =
   | _ =>
     load nC = convertNat (n - 1) in
     store (1 + nC)
-    end
   end;;
 
 nth n : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> =
   load nC = convertNat n in
-  store (nthHelper nC)
-  end;;
+  store (nthHelper nC);;

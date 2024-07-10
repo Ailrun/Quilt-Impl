@@ -4,7 +4,6 @@ convertNat n : Int<P> -> Int<C> Down <P> =
   | n =>
     load nC_ = convertNat (n - 1) in
     store (1 + nC_)
-    end
   end;;
 
 powHelper n : Int<C> -> [x:Int<P> |- Int<P>] Up<C> =
@@ -16,5 +15,4 @@ powHelper n : Int<C> -> [x:Int<P> |- Int<P>] Up<C> =
 
 pow n : Int<P> -> [x:Int<P> |- Int<P>] Up<C> Down<P> =
   load nC_ = convertNat n in
-  store (powHelper nC_)
-  end;;
+  store (powHelper nC_);;

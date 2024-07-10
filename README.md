@@ -66,6 +66,24 @@ as "`Up` to `<C>`" or "`Down` to `<P>`". Note that we use `<>`
 instead of superscript or subscript, as they are not easy to use
 in general.
 
+Construction of data type values has some minor difference as well.
+Instead of writing `Cons x xs` in the curried form, we use
+`Cons (x, xs)`.
+
+Also, to assign branches to nested `match`s easily, we use
+`end` at the end of each `match`. Thus, instead of
+```
+match xs with
+| Nil => ...
+| Cons (x, xs) => ...
+```
+we write
+```
+match xs with
+| Nil => ...
+| Cons (x, xs) => ...
+```
+
 Last but not least, identifiers starting with a captial letter is
 for type/term constructor for datatypes, thus one cannot use
 them for normal variables.

@@ -22,13 +22,9 @@ mapArrayHelper n : Int<GF>
     load ys_ = mapArrayHelper (n - 1) in
     store (susp (i, a, xs, f .
       let (x, xs1) = readGF a (force i) xs in
-        load x_ = x in
-          let xs2 = writeGF a (force i) (store (f x_)) xs1 in
-            force ys_ @ (susp (1 + force i), a, xs2, f)
-          end
-        end
-      end))
-    end
+      load x_ = x in
+      let xs2 = writeGF a (force i) (store (f x_)) xs1 in
+      force ys_ @ (susp (1 + force i), a, xs2, f)))
   end;;
 
 mapArray n : Int<GF>
@@ -37,5 +33,4 @@ mapArray n : Int<GF>
               , f : (force a) Up<GC> -> (force a) Up<GC>
               |- (force a) Array ] Up<C> Down<GF> =
   load ys_ = mapArrayHelper n in
-  store (susp (a, xs, f . force ys_ @ (susp 0, a, xs, f)))
-  end;;
+  store (susp (a, xs, f . force ys_ @ (susp 0, a, xs, f)));;

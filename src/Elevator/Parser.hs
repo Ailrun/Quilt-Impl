@@ -184,7 +184,6 @@ parseLetTerm = do
   t0 <- parseTerm
   keyword "in"
   t1 <- parseTerm
-  keyword "end"
   pure $ TmMatch t0 mayTy [(pat, t1)]
 
 parseLoadTerm :: (ElModeSpec m) => ElParser (ElTerm m)
@@ -196,7 +195,6 @@ parseLoadTerm = do
   t0 <- parseTerm
   keyword "in"
   t1 <- parseTerm
-  keyword "end"
   pure $ TmMatch t0 mayTy [(PatLoad pat, t1)]
 
 parseIteTerm :: (ElModeSpec m) => ElParser (ElTerm m)

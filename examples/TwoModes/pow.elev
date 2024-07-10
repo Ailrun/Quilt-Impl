@@ -4,5 +4,4 @@ pow n : Int<P> -> [x:Int<P> |- Int<P>] Up<C> Down<P> =
   | n =>
     load pow_ = pow (n - 1) in
     store (susp (x . x * force pow_ @ (x)))
-    end
   end;;

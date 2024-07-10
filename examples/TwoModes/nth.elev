@@ -16,5 +16,4 @@ nth n : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> =
   | _ =>
     load nth_ = nth (n - 1) in
     store (susp (a, xs . force nth_ @ (a, (tail a xs))))
-    end
   end;;

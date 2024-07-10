@@ -4,15 +4,12 @@ data a ListC <C> = Nil | Cons of a * a ListC;;
 mapLinMetaGen a xs : (a : Type<GF> Up<C>)
                    -> (force a) Up<C> ListC
                    -o [ b : Type<GF> Up<GC>
-                      , f : (force a -> force b) Up<GC> Down<GF>
+                      , f : (force a -> force b) Up<GC>
                       |- (force b) List ] Up<C> =
   match xs with
-  | Nil => susp (b, f . load f_ = f in Nil end)
+  | Nil => susp (b, f . Nil)
   | Cons (x, xs) =>
-      susp (b, f .
-        load f_ = f in
-          Cons ((force f_) (force x), force (mapLinMetaGen a xs) @ (b, store f_))
-        end)
+      susp (b, f . Cons ((force f) (force x), force (mapLinMetaGen a xs) @ (b, f)))
   end;;
 
 convertList a lift xs : (a : Type<GF> Up<C>)
@@ -20,15 +17,12 @@ convertList a lift xs : (a : Type<GF> Up<C>)
                       -o (force a) List
                       -o (force a) Up<C> ListC Down<GF> =
   match xs with
-  | Nil => load lift_ = lift in store Nil end
+  | Nil => load lift_ = lift in store Nil
   | Cons (x, xs) =>
       load lift_ = lift in
-        load x_ = (force lift_) x in
-          load xs_ = convertList a (store lift_) xs in
-          store (Cons (x_, xs_))
-          end
-        end
-      end
+      load x_ = (force lift_) x in
+      load xs_ = convertList a (store lift_) xs in
+      store (Cons (x_, xs_))
   end;;
 
 mapLinMeta a lift xs : (a : Type<GF> Up<C>)
@@ -38,8 +32,7 @@ mapLinMeta a lift xs : (a : Type<GF> Up<C>)
                         , f : (force a -> force b) Up<GC> Down<GF>
                         |- (force b) List ] Up<C> Down<GF> =
   load xs_ = convertList a lift xs in
-  store (susp (b, f . force (mapLinMetaGen a xs_) @ (b, f)))
-  end;;
+  store (susp (b, f . load f_ = f in force (mapLinMetaGen a xs_) @ (b, f_)));;
 
 exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
 
@@ -49,5 +42,4 @@ liftInt n : Int<GF> -o Int<GF> Up<C> Down<GF> =
   | n =>
      load n_ = liftInt (n - 1) in
      store (susp (1 + force n_))
-     end
   end;;

@@ -13,13 +13,8 @@ writeGF a n v arr : (a : Type<GF> Up<GC>) -> Int<GF> -o (force a) Up<GC> Down<GF
 useArray n : Int<GF> -o Int<GF> Up<GC> Down<GF> =
   withAllocGF (susp Int<GF>) (susp Int<GF>) n (store (susp 0)) (fun arr0 ->
     let (x, arr1) = readGF (susp Int<GF>) 0 arr0 in
-      load x_ = x in
-        let arr2 = writeGF (susp Int<GF>) 0 (store (susp (1 + force x_))) arr1 in
-          let (x, arr3) = readGF (susp Int<GF>) 0 arr2 in
-            load x_ = x in
-              (arr3, store x_)
-            end
-          end
-        end
-      end
-    end);;
+    load x_ = x in
+    let arr2 = writeGF (susp Int<GF>) 0 (store (susp (1 + force x_))) arr1 in
+    let (x, arr3) = readGF (susp Int<GF>) 0 arr2 in
+    load x_ = x in
+    (arr3, store x_));;

@@ -6,12 +6,10 @@ mapLin a b f xs : (a : Type<GF> Up<GC>)
                 -o (force a) List
                 -o (force b) List =
   match xs with
-  | Nil =>
-      load f_ = f in Nil end
+  | Nil => load f_ = f in Nil
   | Cons (x, xs) =>
       load f_ = f in
       Cons ((force f_) x, mapLin a b (store f_) xs)
-      end
   end;;
 
 exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
