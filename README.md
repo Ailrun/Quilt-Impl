@@ -74,7 +74,6 @@ them for normal variables.
 
 - When parse error happens in the type signature of a term definition,
   it reports the beginning of the term identifier.
-- Currently a type error does not produce a pretty message.
 - Omitting identity substitution is not yet supported. For example,
   ```
   let x = susp(y . y) in

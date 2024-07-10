@@ -3,16 +3,18 @@
 module Elevator.Evaluator where
 
 import Control.Applicative        (Applicative (liftA2), liftA3)
-import Control.Monad.Except       (ExceptT, MonadError (..), runExceptT)
+import Control.Monad.Except       (ExceptT, MonadError (..), mapExceptT,
+                                   runExceptT)
 import Control.Monad.State.Strict (MonadState (get), State, StateT (runStateT),
                                    modify)
 import Control.Monad.Trans        (MonadTrans (lift))
+import Data.Bifunctor             (first, second)
 import Data.Foldable              (foldlM, toList)
 import Data.HashMap.Strict        (HashMap)
 import Data.HashMap.Strict        qualified as HashMap
 import Data.List                  (foldl')
 import Data.Sequence              (Seq (..))
-import Data.Tuple.Extra           (first, fst3, second)
+import Data.Tuple.Extra           (fst3)
 import Data.Vector                (Vector)
 import Data.Vector                qualified as Vector
 import Elevator.ModeSpec
@@ -53,7 +55,7 @@ eval (ITmVar x) = do
   case envLookup x env of
     Just (Just t) -> eval t
     Just Nothing  -> pure $ ITmVar x
-    Nothing       -> throwError $ "Variable \"" <> show x <> "\" has no reference in " <> show env
+    Nothing       -> throwError $ EEVariableNotInEnv x env -- "Variable \"" <> show x <> "\" has no reference in " <> show env
 eval (ITmBuiltIn bi) = evalBuiltIn bi []
 eval (ITmArrayTag n) = pure $ ITmArrayTag n
 eval (ITmData c cn args) = ITmData c cn <$> traverse eval args
@@ -68,7 +70,7 @@ eval (ITmIte t t0 t1) = do
       | checkNormHead r -> nonBooleanError r
       | otherwise -> pure $ ITmIte r t0 t1
   where
-    nonBooleanError r = throwError $ "Non-boolean result from the condition \"" <> show r <> "\""
+    nonBooleanError = throwError . EENonBoolean -- "Non-boolean result from the condition \"" <> show r <> "\""
 eval (ITmInt n) = pure $ ITmInt n
 eval (ITmBinOp bop t0 t1) = do
   r0 <- eval t0
@@ -76,9 +78,9 @@ eval (ITmBinOp bop t0 t1) = do
   case (r0, r1) of
     (ITmInt n0, ITmInt n1) -> pure $ computeBop bop n0 n1
     (ITmInt _,  _)
-      | checkNormHead r1 -> throwError $ "Non-integer result for the second operand \"" <> show r1 <> "\""
+      | checkNormHead r1 -> throwError $ EENonInteger r1 "the second operand" -- "Non-integer result for the second operand \"" <> show r1 <> "\""
     (_, _)
-      | checkNormHead r1 -> throwError $ "Non-integer result for the first operands \"" <> show r0 <> "\""
+      | checkNormHead r0 -> throwError $ EENonInteger r0 "the first operand" -- "Non-integer result for the first operands \"" <> show r0 <> "\""
       | otherwise -> pure $ ITmBinOp bop r0 r1
 eval (ITmTuple items) = ITmTuple <$> traverse eval items
 eval (ITmMatch m t ty brs) = do
@@ -100,7 +102,7 @@ eval (ITmForce h t sub) = do
       t'' <- substM2evalM $ applySubstTerm sub (icontextHat2idomain ctxh) t'
       eval t''
     _
-      | checkNormHead r -> throwError $ "Non Template result \"" <> show r <> "\" for force"
+      | checkNormHead r -> throwError $ EENonTemplate r -- "Non Template result \"" <> show r <> "\" for force"
       | otherwise -> pure $ ITmForce h r sub
 eval (ITmStore h t) = ITmStore h <$> eval t
 eval (ITmLam x ty t) = pure $ ITmLam x ty t
@@ -115,7 +117,7 @@ eval (ITmApp t0 t1) = do
       t' <- matching pat r1 t
       eval t'
     _
-      | checkNormHead r0 -> throwError $ "Non-function result " <> show r0 <> " for application"
+      | checkNormHead r0 -> throwError $ EENonFunction r0 -- "Non-function result " <> show r0 <> " for application"
       | otherwise -> pure $ ITmApp r0 r1
 eval (ITmTApp t0 ty1) = do
   r0 <- eval t0
@@ -124,11 +126,11 @@ eval (ITmTApp t0 ty1) = do
       t' <- substM2evalM $ applySubstTerm [ISEType ty1] [(x, True)] t
       eval t'
     _
-      | checkNormHead r0 -> throwError $ "Non-type-function result \"" <> show r0 <> "\" for application"
+      | checkNormHead r0 -> throwError $ EENonTypeFunction r0 -- "Non-type-function result \"" <> show r0 <> "\" for application"
       | otherwise -> pure $ ITmTApp r0 ty1
 
 firstMatchingBranch :: (ElModeSpec m) => [ElIBranch m] -> ElITerm m -> ElEvalM m (ElITerm m)
-firstMatchingBranch []             _ = throwError "No matching clause"
+firstMatchingBranch []             t = throwError $ EENoMatchingClause t
 firstMatchingBranch ((pat, b):brs) t = catchError (matching pat t b) $ \_ -> firstMatchingBranch brs t
 
 matching :: (ElModeSpec m) => ElIPattern m -> ElITerm m -> ElITerm m -> ElEvalM m (ElITerm m)
@@ -145,7 +147,7 @@ matching (IPatTuple pats)     (ITmTuple items)     b = foldlM (\b' (pat, item) -
 matching (IPatLoad pat)       (ITmStore _ t)       b = matching pat t b
 matching (IPatData _ cn pats) (ITmData _ cn' args) b
   | cn == cn'                                        = foldlM (\b' (pat, arg) -> matching pat arg b') b $ zip pats args
-matching _                    _                    _ = throwError "Pattern mismatching"
+matching pat                  t                    _ = throwError $ EESinglePatternMismatch pat t
 
 findBuiltInSpine :: ElITerm m -> Maybe (ElBuiltIn, ElISubst m)
 findBuiltInSpine (ITmApp t0 t1)  = fmap (:|> ISETerm t1) <$> findBuiltInSpine t0
@@ -165,12 +167,12 @@ evalBuiltIn BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm t0, ISETerm t1, ISETe
       case r of
         ITmTuple [ITmArrayTag tag', v] -> v <$ heapDeleteArrayOf tag'
         _
-          | checkNormHead r -> throwError "Invalid result of the callback for \"withAlloc\""
+          | checkNormHead r -> throwError $ EEInvalidArgumentOfBuiltIn BIWithAlloc r "the callback"
           | otherwise       -> pure r
     _
-      | checkNormHead r0 -> throwError "Invalid result for the size argument of \"withAlloc\""
+      | checkNormHead r0 -> throwError $ EEInvalidArgumentOfBuiltIn BIWithAlloc r0 "the size argument"
       | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm r0, ISETerm r1, ISETerm r2]
-evalBuiltIn BIWithAlloc _                                                              = throwError "Invalid call of built-in \"withAlloc\""
+evalBuiltIn BIWithAlloc spine                                                          = throwError $ EEInvalidCallForBuiltIn BIWithAlloc spine
 evalBuiltIn BIWrite     [ISEType ty0, ISETerm t0, ISETerm t1, ISETerm t2]              = do
   r0 <- eval t0
   r1 <- eval t1
@@ -182,12 +184,12 @@ evalBuiltIn BIWrite     [ISEType ty0, ISETerm t0, ISETerm t1, ISETerm t2]       
           heapModifyArray tag (`Vector.update` [(fromInteger n, r1)])
           pure $ ITmArrayTag tag
         _
-          | checkNormHead r2 -> throwError "Invalid result for the array argument of \"write\""
+          | checkNormHead r2 -> throwError $ EEInvalidArgumentOfBuiltIn BIWrite r2 "the array argument"
           | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1, ISETerm r2]
     _
-      | checkNormHead r0 -> throwError "Invalid result for the index argument of \"write\""
+      | checkNormHead r0 -> throwError $ EEInvalidArgumentOfBuiltIn BIWrite r0 "the index argument"
       | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1, ISETerm r2]
-evalBuiltIn BIWrite     _                                                              = throwError "Invalid call of built-in \"write\""
+evalBuiltIn BIWrite     spine                                                          = throwError $ EEInvalidCallForBuiltIn BIWrite spine
 evalBuiltIn BIRead      [ISEType ty0, ISETerm t0, ISETerm t1]                          = do
   r0 <- eval t0
   r1 <- eval t1
@@ -198,12 +200,12 @@ evalBuiltIn BIRead      [ISEType ty0, ISETerm t0, ISETerm t1]                   
           array <- heapGetArray tag
           pure $ ITmTuple [array Vector.! fromInteger n, ITmArrayTag tag]
         _
-          | checkNormHead r1 -> throwError "Invalid result for the array argument of \"write\""
+          | checkNormHead r1 -> throwError $ EEInvalidArgumentOfBuiltIn BIRead r1 "the array argument"
           | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
     _
-      | checkNormHead r0 -> throwError "Invalid result for the index argument of \"write\""
+      | checkNormHead r0 -> throwError $ EEInvalidArgumentOfBuiltIn BIRead r0 "the index argument"
       | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
-evalBuiltIn BIRead      _                                                              = throwError "Invalid call of built-in \"read\""
+evalBuiltIn BIRead      spine                                                          = throwError $ EEInvalidCallForBuiltIn BIRead spine
 
 buildBuiltInSpine :: ElBuiltIn -> ElISubst m -> ElITerm m
 buildBuiltInSpine bi = foldl app (ITmBuiltIn bi)
@@ -250,7 +252,7 @@ refineTemplate n (ITmForce h t sub)
         t'' <- substM2evalM $ applySubstTerm sub (icontextHat2idomain ctxh) t'
         refineTemplate n t''
       _
-        | checkNormHead r -> throwError $ "Non Template result \"" <> show r <> "\" for force"
+        | checkNormHead r -> throwError $ EENonTemplate r -- "Non Template result \"" <> show r <> "\" for force"
         | otherwise -> pure $ ITmForce h r sub
   | otherwise                          = flip (ITmForce h) sub <$> refineTemplate n t
 refineTemplate n (ITmStore h t)
@@ -336,7 +338,7 @@ heapGetArray tag = do
   ElHeap (_, h) <- getHeap
   case HashMap.lookup tag h of
     Just array -> pure array
-    Nothing    -> throwError $ "Invalid heap location " <> show tag
+    Nothing    -> throwError $ EEInvalidHeapLoc tag -- "Invalid heap location " <> show tag
 
 heapModifyArray :: Integer -> (Vector (ElITerm m) -> Vector (ElITerm m)) -> ElEvalM m ()
 heapModifyArray tag f = modifyHeap (\(ElHeap (nid, h)) -> ElHeap (nid, HashMap.adjust f tag h))
@@ -359,11 +361,26 @@ envExtendWithIds xs = modifyEnv (ElEnv . HashMap.union (HashMap.fromList . toLis
 envLookup :: ElId -> ElEnv m -> Maybe (Maybe (ElITerm m))
 envLookup x = HashMap.lookup x . getElEnv
 
-newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m, ElHeap m) (ExceptT String (State Integer)) a }
-  deriving newtype (Functor, Applicative, Monad, MonadState (ElEnv m, ElHeap m), MonadError String)
+newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m, ElHeap m) (ExceptT (ElEvalError m) (State Integer)) a }
+  deriving newtype (Functor, Applicative, Monad, MonadState (ElEnv m, ElHeap m), MonadError (ElEvalError m))
 
-substM2evalM :: ElSubstM a -> ElEvalM m a
-substM2evalM = ElEvalM . lift . runElSubstM
+substM2evalM :: ElSubstM m a -> ElEvalM m a
+substM2evalM = ElEvalM . lift . mapExceptT (fmap (first EESubstitutionError)) . runElSubstM
 
-fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either String (a, (ElEnv m, ElHeap m)))
+fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either (ElEvalError m) (a, (ElEnv m, ElHeap m)))
 fullRunElEvalM = runExceptT . flip runStateT (ElEnv HashMap.empty, ElHeap (0, HashMap.empty)) . runElEvalM
+
+data ElEvalError m
+  = EEVariableNotInEnv ElId (ElEnv m)
+  | EENonBoolean (ElITerm m)
+  | EENonInteger (ElITerm m) String
+  | EENonTemplate (ElITerm m)
+  | EENonFunction (ElITerm m)
+  | EENonTypeFunction (ElITerm m)
+  | EENoMatchingClause (ElITerm m)
+  | EESinglePatternMismatch (ElIPattern m) (ElITerm m)
+  | EEInvalidCallForBuiltIn ElBuiltIn (ElISubst m)
+  | EEInvalidArgumentOfBuiltIn ElBuiltIn (ElITerm m) String
+  | EEInvalidHeapLoc Integer
+  | EESubstitutionError (ElSubstError m)
+  deriving Show
