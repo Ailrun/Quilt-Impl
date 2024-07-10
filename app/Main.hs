@@ -36,10 +36,10 @@ usage err =
   putStrLn
   $ unlines
   $ maybeToList err <>
-    [ "elevatori <mode> [<module>]"
+    [ "elevatori <mode spec> [<optional module to load>]"
     , ""
     , "Required Arguments:"
-    , "  <mode>"
+    , "  <mode spec>"
     , "    Determines which mode spec one wants to use."
     , "    Currently it can be one of"
     , "    - TwoModes"
@@ -49,12 +49,11 @@ usage err =
     , "    and provide their own mode spec."
     , ""
     , "Optional Arguments:"
-    , "  <module>"
+    , "  <optional module to load>"
     , "    If provided, interpreter loads the module and then"
-    , "    run commands under the definitions in the module"
+    , "    run commands under the definitions in the module."
     , ""
-    , "Optional Arguments:"
-    , "  <module>"
-    , "    If provided, interpreter loads the module and then"
-    , "    run commands under the definitions in the module"
+    , "Other Options:"
+    , "  --help"
+    , "    If this option is there, this message is printed."
     ]

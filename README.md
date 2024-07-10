@@ -11,6 +11,20 @@
 ./elevatori <mode spec> [<optional module to load>]
 ```
 
+- Required arguments:
+  - `<mode spec>`
+    Determines which mode spec one wants to use.
+    Currently it can be one of
+    - TwoModes
+    - LinMeta
+    - InfoFlowModes
+    To use other modes, one can use the code base of this executable as a library
+    and provide their own mode spec.
+- Optional arguments:
+  - `<optional module to load>`
+    If provided, interpreter loads the module and then
+    run commands under the definitions in the module
+
 ### Example Modes
 We provide the following example modes
 - `TwoModes`  
@@ -28,18 +42,28 @@ For example, `/examples/TwoModes` contains some example programs for
 
 ### Syntax Difference
 
-Unlike paper, we do not have two separate top-levels for
+Unlike the paper, we do not have two separate top-levels for
 the type signature and term definition of a top-level term definition.
 Instead, we use the following syntax:
 ```
 <name> <args> : <type> = <exp>;;
 ```
-Moreover, instead of the uparrow and downarrow symbols for the
-up-shift and down-shift modalities, we use `Up` and `Down` for
-them.
+This `<type>` part is the type of `<name>`, thus
+`add n m : Int<P> -> Int<P> -> Int<P> = ...` means
+that `add` is of `Int<P> -> Int<P> -> Int<P>`.
+This syntax is subject to change as it is unconventional.
 
-Also, identifiers starting with a captial letter is for
-type/term constructor for datatypes, thus one cannot use
+Another difference is that we use `Up` and `Down` instead of
+the uparrow and downarrow symbols for the up-shift and
+down-shift modalities. Furthermore, we infer the mode of inner
+type/kind for `Up`/`Down`, so for `Up^C_P`/`Down^C_P` in the
+paper syntax, we use `Up <C>` and `Down <P>`. One can read this
+as "`Up` to `<C>`" or "`Down` to `<P>`". Note that we use `<>`
+instead of superscript or subscript, as they are not easy to use
+in general.
+
+Last but not least, identifiers starting with a captial letter is
+for type/term constructor for datatypes, thus one cannot use
 them for normal variables.
 
 ### Caveat
