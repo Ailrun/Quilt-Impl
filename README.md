@@ -46,7 +46,7 @@ This implementation has several syntax difference with our paper
 on adjoint metaprogramming as the syntax of this implementation is
 limited within ASCII characters.
 
-Unlike the paper, we do not have two separate top-levels for
+First, we do not have two separate top-levels for
 the type signature and term definition of a top-level term definition.
 Instead, we use the following syntax:
 ```
