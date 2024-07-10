@@ -1,16 +1,16 @@
-withAllocGF a b n v f : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> ((force a) Array -> ((force a) Array * (force b) Up<GC> Down<GF>)) -> (force b) Up<GC> Down<GF> =
-  (withAlloc : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> ((force a) Array -> ((force a) Array * (force b) Up<GC> Down<GF>)) -> (force b) Up<GC> Down<GF>)
+withAllocGF a b n v f : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -o (force a) Up<GC> Down<GF> -o ((force a) Array -o ((force a) Array * (force b) Up<GC> Down<GF>)) -o (force b) Up<GC> Down<GF> =
+  (withAlloc : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>) -> Int<GF> -o (force a) Up<GC> Down<GF> -o ((force a) Array -o ((force a) Array * (force b) Up<GC> Down<GF>)) -o (force b) Up<GC> Down<GF>)
     a b n v f;;
 
-readGF a n arr : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Array -> ((force a) Up<GC> Down<GF> * (force a) Array) =
-  (read : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Array -> ((force a) Up<GC> Down<GF> * (force a) Array))
+readGF a n arr : (a : Type<GF> Up<GC>) -> Int<GF> -o (force a) Array -o ((force a) Up<GC> Down<GF> * (force a) Array) =
+  (read : (a : Type<GF> Up<GC>) -> Int<GF> -o (force a) Array -o ((force a) Up<GC> Down<GF> * (force a) Array))
     a n arr;;
 
-writeGF a n v arr : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> (force a) Array -> (force a) Array =
-  (write : (a : Type<GF> Up<GC>) -> Int<GF> -> (force a) Up<GC> Down<GF> -> (force a) Array -> (force a) Array)
+writeGF a n v arr : (a : Type<GF> Up<GC>) -> Int<GF> -o (force a) Up<GC> Down<GF> -o (force a) Array -o (force a) Array =
+  (write : (a : Type<GF> Up<GC>) -> Int<GF> -o (force a) Up<GC> Down<GF> -o (force a) Array -o (force a) Array)
     a n v arr;;
 
-useArray n : Int<GF> -> Int<GF> Up<GC> Down<GF> =
+useArray n : Int<GF> -o Int<GF> Up<GC> Down<GF> =
   withAllocGF (susp Int<GF>) (susp Int<GF>) n (store (susp 0)) (fun arr0 ->
     let (x, arr1) = readGF (susp Int<GF>) 0 arr0 in
       load x_ = x in

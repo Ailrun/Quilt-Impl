@@ -1,9 +1,10 @@
 data a List <GF> = Nil | Cons of a * a List;;
 
-mapLin a b f xs : (a : Type<GF> Up<GC>) -> (b : Type<GF> Up<GC>)
-                -> (force a -> force b) Up<GC> Down<GF>
-                -> (force a) List
-                -> (force b) List =
+mapLin a b f xs : (a : Type<GF> Up<GC>)
+                -> (b : Type<GF> Up<GC>)
+                -o (force a -> force b) Up<GC> Down<GF>
+                -o (force a) List
+                -o (force b) List =
   match xs with
   | Nil =>
       load f_ = f in Nil end

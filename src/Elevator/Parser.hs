@@ -114,7 +114,7 @@ parseLamTerm :: (ElModeSpec m) => ElParser (ElTerm m)
 parseLamTerm = do
   keyword "fun"
   ps <- some parseParam
-  symbol "->"
+  symbol "->" <|> symbol "-o"
   t <- parseTerm
   pure $ foldr ($) t ps
   where
@@ -321,7 +321,7 @@ parseType =
     TyAnn
     (liftA2
      (flip (foldr ($)))
-     (many (try (parseArgSpec <* symbol "->")))
+     (many (try (parseArgSpec <* (symbol "->" <|> symbol "-o"))))
      parseProdType)
     (symbol ":" *> parseKind <?> "kind annotation")
   <?> "type"

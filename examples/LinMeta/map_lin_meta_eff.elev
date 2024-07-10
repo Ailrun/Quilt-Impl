@@ -3,7 +3,7 @@ data a ListC <C> = Nil | Cons of a * a ListC;;
 
 mapLinMetaGen a xs : (a : Type<GF> Up<C>)
                    -> (force a) Up<C> ListC
-                   -> [ b : Type<GF> Up<GC>
+                   -o [ b : Type<GF> Up<GC>
                       , f : (force a -> force b) Up<GC> Down<GF>
                       |- (force b) List ] Up<C> =
   match xs with
@@ -17,8 +17,8 @@ mapLinMetaGen a xs : (a : Type<GF> Up<C>)
 
 convertList a lift xs : (a : Type<GF> Up<C>)
                       -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
-                      -> (force a) List
-                      -> (force a) Up<C> ListC Down<GF> =
+                      -o (force a) List
+                      -o (force a) Up<C> ListC Down<GF> =
   match xs with
   | Nil => load lift_ = lift in store Nil end
   | Cons (x, xs) =>
@@ -33,8 +33,8 @@ convertList a lift xs : (a : Type<GF> Up<C>)
 
 mapLinMeta a lift xs : (a : Type<GF> Up<C>)
                      -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
-                     -> (force a) List
-                     -> [ b : Type<GF> Up<GC>
+                     -o (force a) List
+                     -o [ b : Type<GF> Up<GC>
                         , f : (force a -> force b) Up<GC> Down<GF>
                         |- (force b) List ] Up<C> Down<GF> =
   load xs_ = convertList a lift xs in
@@ -43,7 +43,7 @@ mapLinMeta a lift xs : (a : Type<GF> Up<C>)
 
 exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
 
-liftInt n : Int<GF> -> Int<GF> Up<C> Down<GF> =
+liftInt n : Int<GF> -o Int<GF> Up<C> Down<GF> =
   match n with
   | 0 => store (susp 0)
   | n =>

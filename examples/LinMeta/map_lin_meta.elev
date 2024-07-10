@@ -1,9 +1,9 @@
 data a List <GF> = Nil | Cons of a * a List;;
 
 mapLinMeta a lift xs : (a : Type<GF> Up<C>)
-                     -> (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
-                     -> (force a) List
-                     -> [ b : Type<GF> Up<GC>
+                     -o (force a -> (force a) Up<C> Down<GF>) Up<GC> Down<GF>
+                     -o (force a) List
+                     -o [ b : Type<GF> Up<GC>
                         , f : (force a -> force b) Up<GC> Down<GF>
                         |- (force b) List ] Up<C> Down<GF> =
   match xs with
@@ -23,7 +23,7 @@ mapLinMeta a lift xs : (a : Type<GF> Up<C>)
 
 exampleList : Int<GF> List = Cons (5, Cons (4, Cons (3, Nil)));;
 
-liftInt n : Int<GF> -> Int<GF> Up<C> Down<GF> =
+liftInt n : Int<GF> -o Int<GF> Up<C> Down<GF> =
   match n with
   | 0 => store (susp 0)
   | n =>
