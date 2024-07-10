@@ -33,7 +33,7 @@ showPrettyMode :: (ElModeSpec m) => Int -> m -> String
 showPrettyMode n = showDoc n . prettyMode
 
 showPrettyError :: (Pretty err) => Int -> Maybe Integer -> err -> String
-showPrettyError n (Just l) err = showDoc n $ "Error <interactive line" <+> pretty l <> ">:" <> nest indentSize (hardline <> pretty err)
+showPrettyError n (Just l) err = showDoc n $ "Error <interactive command" <+> pretty l <> ">:" <> nest indentSize (hardline <> pretty err)
 showPrettyError n Nothing err = showDoc n $ "Error:" <> nest indentSize (hardline <> pretty err)
 
 showPrettyEnv :: (ElModeSpec m) => Int -> ElEnv m -> String

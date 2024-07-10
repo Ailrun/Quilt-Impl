@@ -34,7 +34,7 @@ runCompleteParser :: ElParser a -> FilePath -> Text -> Either String a
 runCompleteParser p fp = first errorBundlePretty . parse (between (hidden MPC.space) eof p) fp
 
 parseCommand :: (ElModeSpec m) => ElParser (ElCommand m)
-parseCommand = ComTop <$> parseTop <|> ComTerm <$> parseTerm
+parseCommand = ComTop <$> try parseTop <|> ComTerm <$> parseTerm
 
 parseModule :: (ElModeSpec m) => ElParser (ElModule m)
 parseModule = liftA2 ElModule (many parseImport) (many parseTop)
@@ -78,13 +78,11 @@ parseTyDefTop = impl <?> "top-level type definition"
 
 parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
 parseTmDefTop = do
-  (x, ps, ty) <- try $ do
-    x <- parseLowerId <?> "identifier for term definition"
-    ps <- many parseAtomicPattern
-    symbol ":"
-    ty <- parseType
-    symbol "="
-    pure (x, ps, ty)
+  x <- parseLowerId <?> "identifier for term definition"
+  ps <- many parseAtomicPattern
+  symbol ":"
+  ty <- parseType
+  symbol "="
   t <- parseTerm <?> "term definition"
   toplevelDelimiter
   pure . TopTermDef x ty $ foldr (`TmAmbiLam` Nothing) t ps

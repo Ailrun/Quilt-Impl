@@ -2,6 +2,7 @@
 {-# LANGUAGE ViewPatterns      #-}
 module Elevator.Top where
 
+import Control.Exception          (IOException, catch)
 import Control.Monad.Extra        (loopM, when)
 import Control.Monad.State.Strict (StateT, evalStateT, mapStateT)
 import Control.Monad.Trans        (MonadTrans (lift))
@@ -16,8 +17,9 @@ import Elevator.Parser
 import Elevator.PrettyPrinter
 import Elevator.Syntax
 import Elevator.TypeChecker
-import System.Exit                (exitSuccess)
+import System.Exit                (exitFailure, exitSuccess)
 import System.IO                  (hFlush, stdout)
+import System.IO.Error            (isEOFError)
 
 type ElTopM = StateT Integer IO
 
@@ -44,14 +46,14 @@ interpreterWithFile (_ :: Proxy m) fp opt = do
     Right (premodu :: ElModule m) -> do
       checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ checkModule premodu
       flippedEither checkRes handleModuleCheckingError $ interpreterLoop opt 0
-    Left err -> lift $ putStrLn $ "ParseError <" <> fp <> "> :\n\n" <> unlines (("  " <>) <$> lines err)
+    Left err -> lift $ putStrLn $ "ParseError <" <> fp <> ">:\n\n" <> unlines (("  " <>) <$> lines err)
   where
     handleModuleCheckingError te = lift $ putStrLn $ showPrettyError 80 Nothing te
 
 interpreterLoop :: (ElModeSpec m) => ElTopOptions -> Integer -> ElIModule m -> ElTopM ()
 interpreterLoop opt n modu = do
   lift $ forcePutStr "> "
-  l <- lift getMultiLine
+  l <- lift $ catch getMultiLine ioExceptionHandler
   helperLoop l modu
   where
     isTerminationCommand str = not (T.null str) && (T.isPrefixOf str "quit" || T.isPrefixOf str "exit")
@@ -62,7 +64,7 @@ interpreterLoop opt n modu = do
           lift $ putStrLn "Unexpected command"
           interpreterLoop opt (n + 1) modu'
     helperLoop str modu' = do
-      case readEitherCompleteCommand ("<line " <> show n <> ">") str of
+      case readEitherCompleteCommand ("<interactive command " <> show n <> ">") str of
         Right com -> do
           mayModu'' <- fullCommandRun opt modu' n com
           case mayModu'' of
@@ -71,11 +73,18 @@ interpreterLoop opt n modu = do
               lift $ putStrLn $ showError n err
               interpreterLoop opt (n + 1) modu'
         Left err -> do
-          lift $ putStrLn $ "ParseError <line " <> show n <> "> :\n\n" <> unlines (("  " <>) <$> lines err)
+          lift $ putStrLn $ "ParseError <interactive command " <> show n <> ">:\n\n" <> unlines (("  " <>) <$> lines err)
           interpreterLoop opt (n + 1) modu'
 
     showError ln (TypeError te) = showPrettyError 80 (Just ln) te
     showError ln (EvalError ee) = showPrettyError 80 (Just ln) ee
+
+    ioExceptionHandler :: IOException -> IO Text
+    ioExceptionHandler e = do
+      if isEOFError e
+      then putChar '\n'
+      else print e
+      exitFailure
 
 fullCommandRun :: (ElModeSpec m) => ElTopOptions -> ElIModule m -> Integer -> ElCommand m -> ElTopM (Either (ElTopErr m) (ElIModule m))
 fullCommandRun _   modu _n (ComTop top) = do

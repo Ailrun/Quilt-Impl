@@ -90,8 +90,6 @@ them for normal variables.
 
 ### Caveat
 
-- When parse error happens in the type signature of a term definition,
-  it reports the beginning of the term identifier.
 - Omitting identity substitution is not yet supported. For example,
   ```
   let x = susp(y . y) in
