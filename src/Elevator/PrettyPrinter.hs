@@ -56,7 +56,7 @@ instance (ElModeSpec m) => Pretty (ElKind m) where
 prettyKind :: (ElModeSpec m) => Int -> ElKind m -> Doc ann
 prettyKind _ (KiType k)        = "Type" <> prettyMode k
 prettyKind p (KiUp k Empty ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
-prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ brackets (prettyContext ctx <+> turnstile <+> pretty ki) <+> "Up" <> prettyMode k
+prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ align (brackets (group (prettyContext ctx <+> turnstile <> nest indentSize (line <> pretty ki) <> line'))) <+> "Up" <> prettyMode k
 
 prettyKindAnn :: (ElModeSpec m) => Maybe (ElKind m) -> Doc ann
 prettyKindAnn (Just ki) = space <> colon <+> pretty ki
@@ -75,10 +75,10 @@ prettyType p (TyData [ty] x) = parensIf (p > 2) $ prettyType 3 ty <+> pretty x
 prettyType p (TyData tys x) = parensIf (p > 2) $ prettyProdLike 2 tys <+> pretty x
 prettyType p (TyArray ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Array"
 prettyType p (TyUp k Empty ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Up" <> prettyMode k
-prettyType p (TyUp k ctx ty) = parensIf (p > 2) $ brackets (prettyContext ctx <+> turnstile <+> pretty ty) <+> "Up" <> prettyMode k
+prettyType p (TyUp k ctx ty) = parensIf (p > 2) $ align (brackets (group (prettyContext ctx <+> turnstile <> nest indentSize (line <> pretty ty) <> line'))) <+> "Up" <> prettyMode k
 prettyType p (TyDown k ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Down" <> prettyMode k
 prettyType p (TySusp Empty ty) = parensIf (p > 2) $ "susp" <+> prettyType 3 ty
-prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> parens (prettyContextHat ctxh <+> dot <+> pretty ty)
+prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty ty <> line'))))
 prettyType p (TyForce ty Empty) = parensIf (p > 2) $ "force" <+> prettyType 3 ty
 prettyType p (TyForce ty sub) = parensIf (p > 2) $ "force" <+> prettyType 3 ty <> groupedNestOnNextLine ("@" <+> prettySubst sub)
 prettyType p (TyArr ty0 ty1) = parensIf (p > 1) $ prettyType 2 ty0 <+> singlearrow <+> prettyType 1 ty1
@@ -109,7 +109,7 @@ prettyContext :: (ElModeSpec m) => ElContext m -> Doc ann
 prettyContext = group . vsepWith comma . fmap (\(x, entry) -> pretty x <> colon <> pretty entry)
 
 prettyContextHat :: ElContextHat m -> Doc ann
-prettyContextHat = vsepWith comma . fmap pretty
+prettyContextHat = group . vsepWith comma . fmap pretty
 
 instance (ElModeSpec m) => Pretty (ElTerm m) where
   pretty = prettyTerm 0
@@ -135,7 +135,7 @@ prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . hang 2 $ align (prettyTer
 prettyTerm _ (TmTuple ts) = prettyTupleLike 0 ts
 prettyTerm p (TmData x ts) = parensIf (p > 10) . hang 2 $ pretty x <> softline <> prettyTupleLike 0 ts
 prettyTerm p (TmSusp Empty t) = parensIf (p > 10) . hang 2 $ "susp" <+> prettyTerm 11 t
-prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) . hang 2 $ "susp" <+> parens (prettyContextHat ctxh <+> dot <+> pretty t)
+prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) . hang 2 $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t) <> line')))
 prettyTerm p (TmForce t Empty) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t
 prettyTerm p (TmForce t sub) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t <> softline <> "@" <+> prettySubst sub
 prettyTerm p (TmStore t) = parensIf (p > 10) . hang 2 $ "store" <> softline <> prettyTerm 11 t
@@ -174,9 +174,10 @@ prettyTerm p (TmMatch t mayTy branches) =
   ]
 prettyTerm p (TmAmbiLam x mayEntry t) =
   parensIf (p > 0)
+  . group
   . align
   . nest indentSize
-  $ fillSep
+  $ vsep
     [ "fun" <+> prettyParams params <+> singlearrow
     , group (pretty t)
     ]
@@ -187,15 +188,17 @@ prettyTerm p (TmAmbiLam x mayEntry t) =
     getParams _                           = []
 prettyTerm p (TmAmbiApp t0 a1) =
   parensIf (p > 10)
+  . group
   . nest indentSize
-  $ fillSep
+  $ vsep
     [ prettyTerm 10 t0
     , prettyAmbi 11 a1
     ]
 prettyTerm p (TmAnn t ty) =
   parensIf (p > 0)
+  . group
   . nest indentSize
-  $ fillSep
+  $ vsep
     [ prettyTerm 1 t
     , colon <+> pretty ty
     ]
