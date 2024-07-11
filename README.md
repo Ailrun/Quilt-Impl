@@ -90,6 +90,9 @@ them for normal variables.
 
 ### Caveat
 
+- The evaluation output is dirty because of decorated identifiers.
+  Instead of printing `susp(xs . xs)`, it prints something like
+  `susp(xs~2139 . xs~2139)`.
 - Omitting identity substitution is not yet supported. For example,
   ```
   let x = susp(y . y) in
