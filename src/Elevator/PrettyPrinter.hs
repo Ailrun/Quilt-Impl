@@ -89,12 +89,12 @@ prettyType p (TySusp Empty ty) = parensIf (p > 2) $ "susp" <+> prettyType 4 ty
 prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty ty))))
 prettyType p (TyForce ty Empty) = parensIf (p > 2) $ "force" <+> prettyType 4 ty
 prettyType p (TyForce ty sub) = parensIf (p > 2) . align $ "force" <+> prettyType 4 ty <> groupedNestOnNextLine ("@" <+> prettySubst sub)
-prettyType p (TyArr ty0 ty1) = parensIf (p > 1) . align . group $ prettyType 2 ty0 <> line <> singlearrow <+> prettyType 1 ty1
-prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) . align . group $ parens (pretty a <+> colon <+> pretty ki0) <> line <> singlearrow <+> prettyType 1 ty1
+prettyType p (TyArr ty0 ty1) = parensIf (p > 1) . group $ prettyType 2 ty0 <> line <> singlearrow <+> prettyType 1 ty1
+prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) . group $ parens (pretty a <+> colon <+> pretty ki0) <> line <> singlearrow <+> prettyType 1 ty1
 prettyType p (TyAnn ty ki) = parensIf (p > 0) . group . hang indentSize $ prettyType 1 ty <> line <> colon <+> pretty ki
 
 prettyProdLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElType m) -> Doc ann
-prettyProdLike p = group . parens . vsepWith "*" . fmap (prettyType p)
+prettyProdLike p = align . group . parens . vsepWith' (flatAlt "" " " <> "*") . fmap ((multilineSpace <>) . prettyType p)
 
 prettyTypeAnn :: (ElModeSpec m) => Maybe (ElType m) -> Doc ann
 prettyTypeAnn (Just ty) = space <> colon <+> pretty ty
@@ -132,25 +132,25 @@ prettyTerm p (TmIte t t0 t1) =
     , "else" <+> pretty t1
     ]
 prettyTerm _ (TmInt n) = pretty n
-prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . group . align $ align (prettyTerm lp t0) <> line <> pretty bop <+> align (prettyTerm rp t1)
+prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . group . align $ prettyTerm lp t0 <> line <> pretty bop <+> align (prettyTerm rp t1)
   where
     (p', lp, rp) = precedenceBinOp bop
 prettyTerm _ (TmTuple ts) = prettyTupleLike 0 ts
-prettyTerm p (TmData x ts) = parensIf (p > 10) . group . align $ pretty x <> line <> prettyTupleLike 0 ts
+prettyTerm p (TmData x []) = parensIf (p > 10) $ pretty x
+prettyTerm p (TmData x ts) = parensIf (p > 10) $ pretty x <> groupedNestOnNextLine (prettyTupleLike 0 ts)
 prettyTerm p (TmSusp Empty t) = parensIf (p > 10) $ "susp" <+> prettyTerm 11 t
-prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t) <> line')))
-prettyTerm p (TmForce t Empty) = parensIf (p > 10) . align $ "force" <+> prettyTerm 11 t
-prettyTerm p (TmForce t sub) = parensIf (p > 10) . group . align $ "force" <+> prettyTerm 11 t <> line <> "@" <+> prettySubst sub
-prettyTerm p (TmStore t) = parensIf (p > 10) . group . align $ "store" <+> prettyTerm 11 t
+prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) $ "susp" <> groupedNestOnNextLine (align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t)))))
+prettyTerm p (TmForce t Empty) = parensIf (p > 10) $ "force" <+> prettyTerm 11 t
+prettyTerm p (TmForce t sub) = parensIf (p > 10) $ "force" <+> prettyTerm 11 t <> groupedNestOnNextLine ("@" <+> prettySubst sub)
+prettyTerm p (TmStore t) = parensIf (p > 10) . group . nest indentSize $ "store" <> line <> prettyTerm 11 t
 prettyTerm p (TmMatch t mayTy [(PatLoad pat, t0)]) =
   parensIf (p > 0)
   . align
   $ vsep
     [ group
-      . nest indentSize
       $ vsep
         [ "load" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
-        , pretty t
+        , multilineSpace <> multilineSpace <> pretty t
         , "in"
         ]
     , pretty t0
@@ -162,7 +162,7 @@ prettyTerm p (TmMatch t mayTy [(pat, t0)]) =
     [ group
       $ vsep
         [ "let" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
-        , "  " <> pretty t
+        , multilineSpace <> multilineSpace <> pretty t
         , "in"
         ]
     , pretty t0
@@ -177,8 +177,7 @@ prettyTerm p (TmMatch t mayTy branches) =
 prettyTerm p (TmAmbiLam x mayEntry t) =
   parensIf (p > 0)
   . group
-  . (line' <>)
-  . hang indentSize
+  . nest indentSize
   $ vsep
     [ "fun" <+> prettyParams params <+> singlearrow
     , group (pretty t)
@@ -191,8 +190,7 @@ prettyTerm p (TmAmbiLam x mayEntry t) =
 prettyTerm p (TmAmbiApp t0 a1) =
   parensIf (p > 10)
   . group
-  . (line' <>)
-  . hang indentSize
+  . nest indentSize
   $ vsep
     [ prettyTerm 10 t0
     , prettyAmbi 11 a1
@@ -200,15 +198,14 @@ prettyTerm p (TmAmbiApp t0 a1) =
 prettyTerm p (TmAnn t ty) =
   parensIf (p > 0)
   . group
-  . (line' <>)
-  . hang indentSize
+  . nest indentSize
   $ vsep
     [ prettyTerm 1 t
     , colon <+> pretty ty
     ]
 
 prettyTupleLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElTerm m) -> Doc ann
-prettyTupleLike p = group . parens . vsepWith comma . fmap (prettyTerm p)
+prettyTupleLike p = tupled . toList . fmap (prettyTerm p)
 
 instance (ElModeSpec m) => Pretty (ElSubstEntry m) where
   pretty = prettySubstEntry
