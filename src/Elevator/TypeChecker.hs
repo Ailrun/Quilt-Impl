@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP               #-}
 {-# LANGUAGE DerivingVia       #-}
+{-# LANGUAGE OverloadedLists   #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE ViewPatterns      #-}
@@ -41,7 +42,7 @@ accumTypeEnvForTop env (TopTypeDef args x k cons) = do
   whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
   iargs <- forM args $ \(y, yki) ->
     (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
-  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))
+  let env' = env <> ElTypingEnvironment [(x, k, TEETypeDecl iargs)]
   pure (env', PTETopTypeDef iargs x k cons)
 
 buildTermEnv :: (ElModeSpec m) => [ElPostTypeEnvTop m] -> ElCheckM m (ElTypingEnvironment m, [ElPostEnvTop m])
@@ -57,7 +58,7 @@ accumTermEnvForPTETop env (PTETopTypeDef iargs x k cons) = do
 accumTermEnvForPTETop env (PTETopTermDef x ty t)         = do
   whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedTermName x
   (ity, k) <- withErrorFor (TETTermDefinition x) . withErrorFor (TETType ty) $ checkWFOfType ty
-  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
+  let env' = env <> ElTypingEnvironment [(x, k, TEETermDecl ity)]
   pure (env', PETopTermDef x k ity t)
 
 checkPETop :: (ElModeSpec m) => ElPostEnvTop m -> ElCheckM m (ElITop m)
@@ -81,11 +82,11 @@ buildEnv = foldlM accumEnvForTop mempty
 accumEnvForTop :: ElModeSpec m => ElTypingEnvironment m -> ElITop m -> ElCheckM m (ElTypingEnvironment m)
 accumEnvForTop env (ITopTermDef x k ity _) = do
   whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedTermName x
-  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))
+  let env' = env <> ElTypingEnvironment [(x, k, TEETermDecl ity)]
   pure env'
 accumEnvForTop env (ITopTypeDef iargs x k icons) = do
   whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
-  let env' = env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs)) <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
+  let env' = env <> ElTypingEnvironment [(x, k, TEETypeDecl iargs)] <> ElTypingEnvironment (Seq.fromList (fmap (\(cn, (c, itys)) -> (c, k, TEEConDecl cn (fst <$> iargs) itys x)) (zip [0..] icons)))
   pure env'
 
 checkTopUnderModule :: (ElModeSpec m) => ElIModule m -> ElTop m -> ElCheckM m (ElIModule m)
@@ -99,14 +100,14 @@ checkTop (TopTermDef x ty t) = do
   whenJustM (lookupTermDecl x) $ const $ throwError $ TEDuplicatedTermName x
   (ity, k) <- checkWFOfType ty
   env <- askEnv
-  underEnv (env <> ElTypingEnvironment (Seq.singleton (x, k, TEETermDecl ity))) $
+  underEnv (env <> ElTypingEnvironment [(x, k, TEETermDecl ity)]) $
     ITopTermDef x k ity <$> checkType ity t
 checkTop (TopTypeDef args x k cons) = do
   whenJustM (lookupTypeDecl x) $ const $ throwError $ TEDuplicatedTypeName x
   iargs <- forM args $ \(y, yki) ->
     (y,) <$> maybe (pure $ IKiType k) (fmap fst . checkWFOfKind) yki
   env <- askEnv
-  underEnv (env <> ElTypingEnvironment (Seq.singleton (x, k, TEETypeDecl iargs))) $ do
+  underEnv (env <> ElTypingEnvironment [(x, k, TEETypeDecl iargs)]) $ do
     forM_ cons $ \(c, _) ->
       whenJustM (lookupConDecl x c) $ const $ throwError $ TEDuplicatedConName x c
     ITopTypeDef iargs x k <$> checkCons iargs cons
@@ -256,7 +257,7 @@ checkWFOfContextEntry (CEType ty) = first ICEType <$> checkWFOfType ty
 -- This works only when all entries in input context have lower modes
 -- than any entry in the ambient context.
 checkWFOfContext :: (ElModeSpec m) => ElContext m -> ElCheckM m (ElIContext m)
-checkWFOfContext = foldlM folder Seq.empty
+checkWFOfContext = foldlM folder []
   where
     folder ictx (x, entry) =
       removeVariablesInType (putIHat ictx)
@@ -342,7 +343,7 @@ checkType ity (TmStore t)
   | ITyDown _ h ity' <- ity = checkContextUsageGE h $ ITmStore h <$> checkType ity' t
   | otherwise               = throwError $ TEInvalidTypeForSusp ity
 checkType ity (TmAmbiLam pat mayCE t)
-  | ITyArr ity0 ity1 <- ity = do
+  | ITyArr ity0 ity1 <- ity =
       case mayCE of
         Just (CEType ty0') -> do
           (ity0', k) <- checkWFOfType ty0'
@@ -352,23 +353,26 @@ checkType ity (TmAmbiLam pat mayCE t)
         Nothing -> do
           k <- extractModeOfType ity0
           handleLambda ity0 k ity1
-  | ITyForall _ iki0 ity1 <- ity = do
+  | ITyForall y iki0 ity1 <- ity =
       case mayCE of
         Just (CEType ty0) -> throwError $ TEInvalidTypeAnnForTypeLam ty0 iki0
         Just (CEKind ki0') -> do
           (iki0', k) <- checkContextUsageGEBy snd $ checkWFOfKind ki0'
           unifyIKind iki0 iki0'
-          handleTypeLambda iki0 k ity1
-        Nothing -> handleTypeLambda iki0 (getModeOfIKind iki0) ity1
+          handleTypeLambda y iki0 k ity1
+        Nothing -> handleTypeLambda y iki0 (getModeOfIKind iki0) ity1
   | otherwise               = throwError $ TEInvalidTypeForLam ity
   where
     handleLambda ity0 k ity1 = do
       (ipat, ictx) <- checkPatternType ity0 k pat
       removeVariables (putIHat ictx) $ ITmLam ipat ity0 <$> local (<> ictx) (checkType ity1 t)
 
-    handleTypeLambda iki0 k ity1 = do
+    handleTypeLambda _ iki0 k ity1 =
       case pat of
-        PatVar x -> removeTypeVariable (x, k) $ ITmTLam x iki0 <$> local (:|> (x, k, ICEKind iki0)) (checkType ity1 t)
+        PatVar x -> do
+          -- this substitution is required once we compare types more properly
+          -- ity1' <- substM2checkM $ applySubstType [ISEType (ITyVar x)] [(y, True)] ity1
+          removeTypeVariable (x, k) $ ITmTLam x iki0 <$> local (:|> (x, k, ICEKind iki0)) (checkType ity1 t)
         _        -> throwError $ TEInvalidPatternForTypeLam pat
 checkType ity t = do
   (it, ity', _) <- inferType t
@@ -386,6 +390,27 @@ inferType :: (ElModeSpec m) => ElTerm m -> ElCheckM m (ElITerm m, ElIType m, m)
 inferType (TmVar x) = do
   (k, ity) <- getTermAndUse x
   pure (ITmVar x, ity, k)
+inferType (TmBinOp bop t0 t1) = catchError t0First (const t1First)
+  where
+    t0First = do
+      -- This exploits that our binary operators always have
+      -- same modes for all operands. If we introduce a binary
+      -- operation violates this condition, we should remove
+      -- this from @inferType@.
+      (it0, ity0, k) <- inferType t0
+      let
+        (ity0', ity1, ity) = elBinOpType k bop
+      unifyIType ity0 ity0'
+      it1 <- checkType ity1 t1
+      pure (ITmBinOp bop it0 it1, ity, k)
+
+    t1First = do
+      (it1, ity1, k) <- inferType t1
+      let
+        (ity0, ity1', ity) = elBinOpType k bop
+      unifyIType ity1 ity1'
+      it0 <- checkType ity0 t0
+      pure (ITmBinOp bop it0 it1, ity, k)
 inferType (TmTuple items) = do
   (iitems, itys, ms) <- unzip3 <$> traverse inferType items
   forM_ (tail ms) $ testIsSameMode (head ms)
@@ -397,6 +422,20 @@ inferType (TmForce t sub) = do
       isub <- checkContext ictx sub
       substM2checkM $ (ITmForce k it isub,, l) <$> applySubstType isub (icontext2idomain ictx) ity'
     _ -> throwError $ TEInvalidTermBodyForForce it ity
+inferType (TmAmbiLam pat (Just (CEType ty0)) t) = do
+  (ity0, k) <- checkWFOfType ty0
+  (ipat, ictx) <- checkPatternType ity0 k pat
+  (it, ity1, k') <- removeVariables (putIHat ictx) $ local (<> ictx) (inferType t)
+  testIsSameMode k k'
+  pure (ITmLam ipat ity0 it, ITyArr ity0 ity1, k)
+inferType (TmAmbiLam pat (Just (CEKind ki0)) t) =
+  case pat of
+    PatVar x -> do
+      (iki0, m) <- checkWFOfKind ki0
+      (it, ity1, k) <- removeTypeVariable (x, m) $ local (:|> (x, m, ICEKind iki0)) $ inferType t
+      testIsGEMode m k
+      pure (ITmTLam x iki0 it, ITyForall x iki0 ity1, k)
+    _        -> throwError $ TEInvalidPatternForTypeLam pat
 inferType (TmAmbiApp t0 a1) = do
   (it0, ity, k) <- inferType t0
   case ity of
@@ -404,7 +443,7 @@ inferType (TmAmbiApp t0 a1) = do
       (, ity1, k) . ITmApp it0 <$> checkTypeForAmbi ity0 a1
     ITyForall x iki0 ity1 -> do
       ity0 <- checkKindForAmbi iki0 a1
-      ity1' <- substM2checkM $ applySubstType (Seq.singleton (ISEType ity0)) (Seq.singleton (x, True)) ity1
+      ity1' <- substM2checkM $ applySubstType [ISEType ity0] [(x, True)] ity1
       pure (ITmTApp it0 ity0 , ity1', k)
     _ -> throwError $ TEInvalidFunctionForApp it0 ity
 inferType (TmAnn t ty) = do
@@ -423,16 +462,16 @@ checkKindForAmbi iki (AmType ty) = checkKind iki ty
 checkKindForAmbi _   (AmTerm tm) = throwError $ TEInvalidTermArgForTypeLam tm
 
 checkPatternType :: (ElModeSpec m) => ElIType m -> m -> ElPattern m -> ElCheckM m (ElIPattern m, ElIContext m)
-checkPatternType _   _ PatWild = pure (IPatWild, Seq.empty)
-checkPatternType ity k (PatVar x) = pure (IPatVar x, Seq.singleton (x, k, ICEType ity))
+checkPatternType _   _ PatWild = pure (IPatWild, [])
+checkPatternType ity k (PatVar x) = pure (IPatVar x, [(x, k, ICEType ity)])
 checkPatternType ity _ PatTrue
-  | ITyBool _ <- ity = pure (IPatTrue, Seq.empty)
+  | ITyBool _ <- ity = pure (IPatTrue, [])
   | otherwise        = throwError $ TEInvalidTypeForTrue ity
 checkPatternType ity _ PatFalse
-  | ITyBool _ <- ity = pure (IPatFalse, Seq.empty)
+  | ITyBool _ <- ity = pure (IPatFalse, [])
   | otherwise        = throwError $ TEInvalidTypeForFalse ity
 checkPatternType ity _ (PatInt n)
-  | ITyInt _ <- ity = pure (IPatInt n, Seq.empty)
+  | ITyInt _ <- ity = pure (IPatInt n, [])
   | otherwise       = throwError $ TEInvalidTypeForInt ity
 checkPatternType ity k (PatTuple pats)
   | ITyProd itemTys <- ity =
@@ -590,7 +629,7 @@ substM2checkM :: ElSubstM m a -> ElCheckM m a
 substM2checkM = ElCheckM . const . const . mapExceptT (fmap (first TESubstitutionError)) . fmap (UEmpty,) . runElSubstM
 
 fullRunElCheckM :: ElCheckM m a -> State Integer (Either (ElTypingError m) a)
-fullRunElCheckM = fmap (fmap snd) . runExceptT . ($ Seq.empty) . ($ ElTypingEnvironment Seq.empty) . runElCheckM
+fullRunElCheckM = fmap (fmap snd) . runExceptT . ($ []) . ($ ElTypingEnvironment []) . runElCheckM
 
 -- We need this function only to check whether a type is used in
 -- a valid mode or not. This does not actually "consume" the

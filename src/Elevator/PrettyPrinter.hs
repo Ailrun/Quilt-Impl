@@ -33,8 +33,8 @@ showPrettyMode :: (ElModeSpec m) => Int -> m -> String
 showPrettyMode n = showDoc n . prettyMode
 
 showPrettyError :: (Pretty err) => Int -> Maybe Integer -> err -> String
-showPrettyError n (Just l) err = showDoc n $ "Error <interactive command" <+> pretty l <> ">:" <> nest indentSize (hardline <> pretty err)
-showPrettyError n Nothing err = showDoc n $ "Error:" <> nest indentSize (hardline <> pretty err)
+showPrettyError n (Just l) err = showDoc n . nest indentSize $ "Error <interactive command" <+> pretty l <> ">:" <> hardline <> hardline <> pretty err <> hardline
+showPrettyError n Nothing err = showDoc n . nest indentSize $ "Error:" <> hardline <> hardline <> pretty err <> hardline
 
 showPrettyEnv :: (ElModeSpec m) => Int -> ElEnv m -> String
 showPrettyEnv n env = showDoc n $ nest indentSize (hardline <> prettyEnv env)
@@ -43,11 +43,19 @@ instance (ElModeSpec m) => Pretty (ElTop m) where
   pretty = prettyTop
 
 prettyTop :: (ElModeSpec m) => ElTop m -> Doc ann
-prettyTop (TopTermDef x ty t)      = pretty x <+> colon <+> pretty ty <+> equals <> groupedNestOnNextLine (pretty t)
-prettyTop (TopTypeDef ys x m cons) = "data" <+> parens (prettyTyArgs ys) <+> pretty x <> prettyMode m <> groupedNestOnNextLine (equals <+> vsepWith "|" (fmap prettyCon cons))
+prettyTop (TopTermDef x ty t)        = pretty x <+> colon <+> pretty ty <+> equals <> groupedNestOnNextLine (pretty t) <> doublesemi
+prettyTop (TopTypeDef args x m cons) = "data" <+> prettyTyArgs args <> pretty x <> prettyMode m <> prettyCons cons <> doublesemi
   where
-    prettyTyArgs = vsepWith comma . fmap prettyTyArg
-    prettyTyArg (y, mayKi) = pretty y <+> prettyKindAnn mayKi
+    prettyTyArgs []             = mempty
+    prettyTyArgs [(y, Nothing)] = pretty y
+    prettyTyArgs as             = align . group . (<> space) . parens . (<> line') . vsepWith' (flatAlt "" " " <> "*") $ fmap ((multilineSpace <>) . prettyTyArg) as
+
+    prettyTyArg (y, mayKi) = pretty y <> prettyKindAnn mayKi
+
+    prettyCons [] = mempty
+    prettyCons cs = groupedNestOnNextLine (equals <> vsepWith' pipe (fmap ((multilineSpace <>) . prettyCon) cs))
+
+    prettyCon (c, [])  = pretty c
     prettyCon (c, tys) = pretty c <+> "of" <+> prettyProdLike 2 tys
 
 instance (ElModeSpec m) => Pretty (ElKind m) where
@@ -56,7 +64,7 @@ instance (ElModeSpec m) => Pretty (ElKind m) where
 prettyKind :: (ElModeSpec m) => Int -> ElKind m -> Doc ann
 prettyKind _ (KiType k)        = "Type" <> prettyMode k
 prettyKind p (KiUp k Empty ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
-prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ align (brackets (group (prettyContext ctx <+> turnstile <> nest indentSize (line <> pretty ki) <> line'))) <+> "Up" <> prettyMode k
+prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ align (brackets (group (prettyContext ctx <> line <> turnstile <+> pretty ki <> line'))) <+> "Up" <> prettyMode k
 
 prettyKindAnn :: (ElModeSpec m) => Maybe (ElKind m) -> Doc ann
 prettyKindAnn (Just ki) = space <> colon <+> pretty ki
@@ -69,27 +77,21 @@ prettyType :: (ElModeSpec m) => Int -> ElType m -> Doc ann
 prettyType _ (TyVar x) = pretty x
 prettyType _ (TyInt k) = "Int" <> prettyMode k
 prettyType _ (TyBool k) = "Bool" <> prettyMode k
-prettyType _ (TyProd tys) = prettyProdLike 2 tys
+prettyType _ (TyProd tys) = prettyProdLike 3 tys
 prettyType _ (TyData [] x) = pretty x
-prettyType p (TyData [ty] x) = parensIf (p > 2) $ prettyType 3 ty <+> pretty x
-prettyType p (TyData tys x) = parensIf (p > 2) $ prettyProdLike 2 tys <+> pretty x
-prettyType p (TyArray ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Array"
-prettyType p (TyUp k Empty ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Up" <> prettyMode k
-prettyType p (TyUp k ctx ty) = parensIf (p > 2) $ align (brackets (group (prettyContext ctx <+> turnstile <> nest indentSize (line <> pretty ty) <> line'))) <+> "Up" <> prettyMode k
-prettyType p (TyDown k ty) = parensIf (p > 2) $ prettyType 3 ty <+> "Down" <> prettyMode k
-prettyType p (TySusp Empty ty) = parensIf (p > 2) $ "susp" <+> prettyType 3 ty
-prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty ty <> line'))))
-prettyType p (TyForce ty Empty) = parensIf (p > 2) $ "force" <+> prettyType 3 ty
-prettyType p (TyForce ty sub) = parensIf (p > 2) $ "force" <+> prettyType 3 ty <> groupedNestOnNextLine ("@" <+> prettySubst sub)
-prettyType p (TyArr ty0 ty1) = parensIf (p > 1) $ prettyType 2 ty0 <+> singlearrow <+> prettyType 1 ty1
-prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) $ parens (pretty a <+> colon <+> pretty ki0) <+> singlearrow <+> prettyType 1 ty1
-prettyType p (TyAnn ty ki) =
-  parensIf (p > 0)
-  . nest indentSize
-  $ fillSep
-    [ prettyType 1 ty
-    , colon <+> pretty ki
-    ]
+prettyType p (TyData [ty] x) = parensIf (p > 3) $ prettyType 4 ty <+> pretty x
+prettyType p (TyData tys x) = parensIf (p > 3) $ prettyProdLike 3 tys <+> pretty x
+prettyType p (TyArray ty) = parensIf (p > 3) $ prettyType 4 ty <+> "Array"
+prettyType p (TyUp k Empty ty) = parensIf (p > 3) $ prettyType 3 ty <+> "Up" <> prettyMode k
+prettyType p (TyUp k ctx ty) = parensIf (p > 3) $ align (brackets (group (multilineSpace <> prettyContext ctx <> line <> turnstile <+> pretty ty <> line'))) <+> "Up" <> prettyMode k
+prettyType p (TyDown k ty) = parensIf (p > 3) $ prettyType 3 ty <+> "Down" <> prettyMode k
+prettyType p (TySusp Empty ty) = parensIf (p > 2) $ "susp" <+> prettyType 4 ty
+prettyType p (TySusp ctxh ty) = parensIf (p > 2) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty ty))))
+prettyType p (TyForce ty Empty) = parensIf (p > 2) $ "force" <+> prettyType 4 ty
+prettyType p (TyForce ty sub) = parensIf (p > 2) . align $ "force" <+> prettyType 4 ty <> groupedNestOnNextLine ("@" <+> prettySubst sub)
+prettyType p (TyArr ty0 ty1) = parensIf (p > 1) . align . group $ prettyType 2 ty0 <> line <> singlearrow <+> prettyType 1 ty1
+prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) . align . group $ parens (pretty a <+> colon <+> pretty ki0) <> line <> singlearrow <+> prettyType 1 ty1
+prettyType p (TyAnn ty ki) = parensIf (p > 0) . group . hang indentSize $ prettyType 1 ty <> line <> colon <+> pretty ki
 
 prettyProdLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElType m) -> Doc ann
 prettyProdLike p = group . parens . vsepWith "*" . fmap (prettyType p)
@@ -123,60 +125,60 @@ prettyTerm _ TmFalse = "False"
 prettyTerm p (TmIte t t0 t1) =
   parensIf (p > 9)
   . align
+  . group
   $ vsep
     [ "if" <+> pretty t
     , "then" <+> pretty t0
     , "else" <+> pretty t1
     ]
 prettyTerm _ (TmInt n) = pretty n
-prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . hang 2 $ align (prettyTerm lp t0) <+> pretty bop <+> align (prettyTerm rp t1)
+prettyTerm p (TmBinOp bop t0 t1) = parensIf (p > p') . group . align $ align (prettyTerm lp t0) <> line <> pretty bop <+> align (prettyTerm rp t1)
   where
     (p', lp, rp) = precedenceBinOp bop
 prettyTerm _ (TmTuple ts) = prettyTupleLike 0 ts
-prettyTerm p (TmData x ts) = parensIf (p > 10) . hang 2 $ pretty x <> softline <> prettyTupleLike 0 ts
-prettyTerm p (TmSusp Empty t) = parensIf (p > 10) . hang 2 $ "susp" <+> prettyTerm 11 t
-prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) . hang 2 $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t) <> line')))
-prettyTerm p (TmForce t Empty) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t
-prettyTerm p (TmForce t sub) = parensIf (p > 10) . hang 2 $ "force" <+> prettyTerm 11 t <> softline <> "@" <+> prettySubst sub
-prettyTerm p (TmStore t) = parensIf (p > 10) . hang 2 $ "store" <> softline <> prettyTerm 11 t
+prettyTerm p (TmData x ts) = parensIf (p > 10) . group . align $ pretty x <> line <> prettyTupleLike 0 ts
+prettyTerm p (TmSusp Empty t) = parensIf (p > 10) $ "susp" <+> prettyTerm 11 t
+prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) $ "susp" <+> align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t) <> line')))
+prettyTerm p (TmForce t Empty) = parensIf (p > 10) . align $ "force" <+> prettyTerm 11 t
+prettyTerm p (TmForce t sub) = parensIf (p > 10) . group . align $ "force" <+> prettyTerm 11 t <> line <> "@" <+> prettySubst sub
+prettyTerm p (TmStore t) = parensIf (p > 10) . group . align $ "store" <+> prettyTerm 11 t
 prettyTerm p (TmMatch t mayTy [(PatLoad pat, t0)]) =
   parensIf (p > 0)
   . align
   $ vsep
-    [ nest indentSize
-      $ fillSep
+    [ group
+      . nest indentSize
+      $ vsep
         [ "load" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
         , pretty t
+        , "in"
         ]
-    , "in" <+> pretty t0
-    , "end"
+    , pretty t0
     ]
 prettyTerm p (TmMatch t mayTy [(pat, t0)]) =
   parensIf (p > 0)
   . align
   $ vsep
-    [ nest indentSize
-      $ fillSep
+    [ group
+      $ vsep
         [ "let" <+> pretty pat <> prettyTypeAnn mayTy <+> equals
-        , pretty t
+        , "  " <> pretty t
+        , "in"
         ]
-    , "in" <+> pretty t0
-    , "end"
+    , pretty t0
     ]
 prettyTerm p (TmMatch t mayTy branches) =
   parensIf (p > 0)
-  $ vsep
-  [ nest indentSize
-    $ vsep
-      ("match" <+> pretty t <> prettyTypeAnn mayTy <+> "with"
-       : fmap (\(pati, ti) -> pipe <+> pretty pati <+> doublearrow <+> pretty ti) branches)
-  , "end"
-  ]
+  . align
+  . vsep
+  $ ("match" <+> pretty t <> prettyTypeAnn mayTy <+> "with")
+    : fmap (\(pati, ti) -> pipe <+> pretty pati <+> doublearrow <+> pretty ti) branches
+    <> ["end"]
 prettyTerm p (TmAmbiLam x mayEntry t) =
   parensIf (p > 0)
   . group
-  . align
-  . nest indentSize
+  . (line' <>)
+  . hang indentSize
   $ vsep
     [ "fun" <+> prettyParams params <+> singlearrow
     , group (pretty t)
@@ -189,7 +191,8 @@ prettyTerm p (TmAmbiLam x mayEntry t) =
 prettyTerm p (TmAmbiApp t0 a1) =
   parensIf (p > 10)
   . group
-  . nest indentSize
+  . (line' <>)
+  . hang indentSize
   $ vsep
     [ prettyTerm 10 t0
     , prettyAmbi 11 a1
@@ -197,7 +200,8 @@ prettyTerm p (TmAmbiApp t0 a1) =
 prettyTerm p (TmAnn t ty) =
   parensIf (p > 0)
   . group
-  . nest indentSize
+  . (line' <>)
+  . hang indentSize
   $ vsep
     [ prettyTerm 1 t
     , colon <+> pretty ty
@@ -280,57 +284,57 @@ instance (ElModeSpec m) => Pretty (ElTypingError m) where
 
 prettyTypingError :: (ElModeSpec m) => ElTypingError m -> Doc ann
 prettyTypingError (TESubstitutionError se) = pretty se
-prettyTypingError (TESubstitutionEntryClassMismatchForType x t _) = "Type variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "cannot be instantiated with a term, but this term is provided:" <> groupedNestOnNextLine (pretty t)
+prettyTypingError (TESubstitutionEntryClassMismatchForType x t _) = "Type variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "cannot be instantiated with a term, but this term is provided:" <> groupedNestOnNextLine (pretty t)
 prettyTypingError (TESubstitutionEntryClassMismatchForTerm x ty _) = "Term variable" <+> pretty x <+> "cannot be instantiated with a type, but this type is provided:" <> groupedNestOnNextLine (pretty ty)
-prettyTypingError (TEInvalidNonTypeKind iki) = "Kind" <> groupedNestOnNextLine (pretty iki) <> "is not the kind Type for some mode"
-prettyTypingError (TENotInContext x ictx) = "Variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "is not found in the context:" <> groupedNestOnNextLine (prettyContext (icontext2context ictx))
-prettyTypingError (TENotInEnvironment x env) = "Variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "is not found in the environment:" <> groupedNestOnNextLine (prettyTypingEnvironment env)
-prettyTypingError (TETypeVariableAsTerm x) = "Type variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a term"
-prettyTypingError (TETermVariableAsType x) = "Term variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a type"
-prettyTypingError (TEVariableClassMismatch x) = "Variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a type and a term"
+prettyTypingError (TEInvalidNonTypeKind iki) = "Kind" <> groupedTempNestOnNextLine (pretty iki) <> "is not the kind Type for some mode"
+prettyTypingError (TENotInContext x ictx) = "Variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "is not found in the context:" <> groupedNestOnNextLine (prettyContext (icontext2context ictx))
+prettyTypingError (TENotInEnvironment x env) = "Variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "is not found in the environment:" <> groupedNestOnNextLine (prettyTypingEnvironment env)
+prettyTypingError (TETypeVariableAsTerm x) = "Type variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a term"
+prettyTypingError (TETermVariableAsType x) = "Term variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a type"
+prettyTypingError (TEVariableClassMismatch x) = "Variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "cannot be used as a type and a term"
 prettyTypingError TEInvalidEmptyProd = "Nullary product type is not allowed"
 prettyTypingError (TEInvalidKindForSusp iki) = "Type construct susp must have a template kind, but this kind is provided:" <> groupedNestOnNextLine (pretty iki)
-prettyTypingError (TEInvalidTypeBodyForForce ity iki) = "Type construct force cannot use this type:" <> groupedNestOnNextLine (pretty ity) <> "as it has this non-template kind:" <> groupedNestOnNextLine (pretty iki)
+prettyTypingError (TEInvalidTypeBodyForForce ity iki) = "Type construct force cannot use this type:" <> groupedTempNestOnNextLine (pretty ity) <> "as it has this non-template kind:" <> groupedNestOnNextLine (pretty iki)
 prettyTypingError TEInvalidKindTypeForSusp = "Type construct susp cannot have a kind Type"
-prettyTypingError (TEInvalidTypeForData ity) = "Data constructor must have a datatype, but this type is provided:" <> groupedNestOnNextLine (pretty ity) <> "cannot be used for a "
+prettyTypingError (TEInvalidTypeForData ity) = "Data constructor must have a datatype, but this type is provided:" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be used for a "
 prettyTypingError (TEInvalidTypeForTrue ity) = "Term True must have a Bool type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidTypeForFalse ity) = "Term False must have a Bool type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidTypeForInt ity) = "An int term must have an Int type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidTypeForTuple ity) = "A tuple must have a product type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
-prettyTypingError (TEInvalidTypeForSusp ity) = "Term construct susp must have a template type" <> groupedNestOnNextLine (pretty ity) <> "cannot be used for a susp"
-prettyTypingError (TEInvalidTermBodyForForce it ity) = "Term" <> groupedNestOnNextLine (pretty it) <> "of a non-template type" <> groupedNestOnNextLine (pretty ity) <> "cannot be forced"
+prettyTypingError (TEInvalidTypeForSusp ity) = "Term construct susp must have a template type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be used for a susp"
+prettyTypingError (TEInvalidTermBodyForForce it ity) = "Term" <> groupedTempNestOnNextLine (pretty it) <> "of a non-template type" <> groupedNestOnNextLine (pretty ity <> line) <> "cannot be forced"
 prettyTypingError (TEInvalidTypeForStore ity) = "Term construct store must have a pointer type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
-prettyTypingError (TEInvalidPointerTypeForLoad ity) = "A non-pointer type" <> groupedNestOnNextLine (pretty ity) <> "cannot be loaded"
+prettyTypingError (TEInvalidPointerTypeForLoad ity) = "A non-pointer type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be loaded"
 prettyTypingError (TEInvalidTypeForLam ity) = "A function must have a function type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
-prettyTypingError (TEInvalidFunctionForApp it ity) = "Term" <> groupedNestOnNextLine (pretty it) <> "of a non-function type" <> groupedNestOnNextLine (pretty ity) <> "cannot be called"
-prettyTypingError (TEInvalidConditionForIte it ity) = "Term" <> groupedNestOnNextLine (pretty it) <> "of a non-Bool type" <> groupedNestOnNextLine (pretty ity) <> "cannot be used as a condition of if-then-else expression"
-prettyTypingError (TEInvalidTypeArgForLam ty) = "Type" <> groupedNestOnNextLine (pretty ty) <> "cannot be used to call a function expecting a value"
-prettyTypingError (TEInvalidTermArgForTypeLam t) = "Term" <> groupedNestOnNextLine (pretty t) <> "cannot be used to call a function expecting a type"
-prettyTypingError (TEInvalidKindAnnForLam ki ity) = "Kind" <> groupedNestOnNextLine (pretty ki) <> "cannot be used to annotate a value argument of type" <> groupedNestOnNextLine (pretty ity)
-prettyTypingError (TEInvalidTypeAnnForTypeLam ty iki) = "Type" <> groupedNestOnNextLine (pretty ty) <> "cannot be used to annotate a type argument of kind" <> groupedNestOnNextLine (pretty iki)
+prettyTypingError (TEInvalidFunctionForApp it ity) = "Term" <> groupedTempNestOnNextLine (pretty it) <> "of a non-function type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be called"
+prettyTypingError (TEInvalidConditionForIte it ity) = "Term" <> groupedTempNestOnNextLine (pretty it) <> "of a non-Bool type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be used as a condition of if-then-else expression"
+prettyTypingError (TEInvalidTypeArgForLam ty) = "Type" <> groupedTempNestOnNextLine (pretty ty) <> "cannot be used to call a function expecting a value"
+prettyTypingError (TEInvalidTermArgForTypeLam t) = "Term" <> groupedTempNestOnNextLine (pretty t) <> "cannot be used to call a function expecting a type"
+prettyTypingError (TEInvalidKindAnnForLam ki ity) = "Kind" <> groupedTempNestOnNextLine (pretty ki) <> "cannot be used to annotate a value argument of type" <> groupedNestOnNextLine (pretty ity)
+prettyTypingError (TEInvalidTypeAnnForTypeLam ty iki) = "Type" <> groupedTempNestOnNextLine (pretty ty) <> "cannot be used to annotate a type argument of kind" <> groupedNestOnNextLine (pretty iki)
 prettyTypingError (TEInvalidPatternForTypeLam pat) = "A type argument cannot be pattern-matched, but this pattern is provided:" <> groupedNestOnNextLine (pretty pat)
 prettyTypingError (TEInvalidBuiltIn m bi) = "A built-in primitive" <+> dquotes (pretty (fromBuiltIn bi)) <+> "cannot be used in" <+> prettyMode m
 prettyTypingError (TEInvalidTypeForArrayTag ity) = "An array must have an array type, but this type is provided" <> groupedNestOnNextLine (pretty ity)
-prettyTypingError (TECheckOnlyTermInInference t) = "The type of the term" <> groupedNestOnNextLine (pretty t) <> "cannot be inferred, as it is only a checkable term." <> hardline <> "Consider to provide a type annotation (term : type) or lift it as a top-level definiltion (with a type signature)"
-prettyTypingError (TECheckOnlyTypeInInference ty) = "The kind of the type" <> groupedNestOnNextLine (pretty ty) <> "cannot be inferred, as it is only a checkable type." <> hardline <> "Consider to provide a kind annotation (type : kind)"
-prettyTypingError (TEDuplicatedTypeName x) = "Top-level type of name" <> groupedNestOnNextLine (dquotes (pretty x)) <> "already exists"
-prettyTypingError (TEDuplicatedConName x c) = "Constructor of name" <> groupedNestOnNextLine (dquotes (pretty c)) <> "already exists in the top-level type of name" <> groupedNestOnNextLine (dquotes (pretty x))
-prettyTypingError (TEDuplicatedTermName x) = "Top-level term of name" <> groupedNestOnNextLine (dquotes (pretty x)) <> "already exists"
-prettyTypingError (TEUnunifiableIKinds iki iki') = "Two kinds" <> groupedNestOnNextLine (pretty iki) <> "and" <> groupedNestOnNextLine (pretty iki') <> "cannot be unified"
-prettyTypingError (TEUnunifiableITypes ity ity') = "Two types" <> groupedNestOnNextLine (pretty ity) <> "and" <> groupedNestOnNextLine (pretty ity') <> "cannot be unified"
-prettyTypingError (TEUnunifiableIEntry ice ice') = "Two context entry" <> groupedNestOnNextLine (pretty ice) <> "and" <> groupedNestOnNextLine (pretty ice') <> "cannot be unified"
-prettyTypingError (TEContextHatConflict ctxh ictx) = "Variable list" <> groupedNestOnNextLine (prettyContextHat ctxh) <> "cannot be check against context" <> groupedNestOnNextLine (prettyContext (icontext2context ictx)) <> "cannot be unified"
+prettyTypingError (TECheckOnlyTermInInference t) = "The type of the term" <> groupedTempNestOnNextLine (pretty t) <> "cannot be inferred, as it is only a checkable term." <> hardline <> "Consider to provide a type annotation" <> groupedTempNestOnNextLine (parens (pretty t <> " : type")) <> "or lift it to a top-level definiltion (with a type signature)"
+prettyTypingError (TECheckOnlyTypeInInference ty) = "The kind of the type" <> groupedTempNestOnNextLine (pretty ty) <> "cannot be inferred, as it is only a checkable type." <> hardline <> "Consider to provide a kind annotation (type : kind)"
+prettyTypingError (TEDuplicatedTypeName x) = "Top-level type of name" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "already exists"
+prettyTypingError (TEDuplicatedConName x c) = "Constructor of name" <> groupedTempNestOnNextLine (dquotes (pretty c)) <> "already exists in the top-level type of name" <> groupedNestOnNextLine (dquotes (pretty x))
+prettyTypingError (TEDuplicatedTermName x) = "Top-level term of name" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "already exists"
+prettyTypingError (TEUnunifiableIKinds iki iki') = "Two kinds" <> groupedTempNestOnNextLine (pretty iki) <> "and" <> groupedTempNestOnNextLine (pretty iki') <> "cannot be unified"
+prettyTypingError (TEUnunifiableITypes ity ity') = "Two types" <> groupedTempNestOnNextLine (pretty ity) <> "and" <> groupedTempNestOnNextLine (pretty ity') <> "cannot be unified"
+prettyTypingError (TEUnunifiableIEntry ice ice') = "Two context entry" <> groupedTempNestOnNextLine (pretty ice) <> "and" <> groupedTempNestOnNextLine (pretty ice') <> "cannot be unified"
+prettyTypingError (TEContextHatConflict ctxh ictx) = "Variable list" <> groupedTempNestOnNextLine (prettyContextHat ctxh) <> "cannot be check against context" <> groupedTempNestOnNextLine (prettyContext (icontext2context ictx)) <> "cannot be unified"
 prettyTypingError (TEModeOrderFailure o m m') = "Mode" <+> prettyMode m <+> "is not" <+> prettyModeOrdering o <+> prettyMode m'
 prettyTypingError (TEModeNotEqual m m') = "Mode" <+> prettyMode m <+> "and" <+> prettyMode m' <+> "cannot be identical"
 prettyTypingError (TEModeStructuralRule r m) = "Mode" <+> prettyMode m <+> "does not allow" <+> prettyModeSt r
 prettyTypingError (TENotYetSupported name) = "We do not support " <+> pretty name <+> "yet"
-prettyTypingError (TETypeArgNumberMismatch x n argTys) = "Type" <> groupedNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedNestOnNextLine (prettyProdLike 0 argTys) <> "are given"
-prettyTypingError (TEConstructorArgNumberMismatch x c n args) = "Constructor" <> groupedNestOnNextLine (dquotes (pretty c)) <> "of type" <> groupedNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedNestOnNextLine (prettyTupleLike 0 args) <> "are given"
-prettyTypingError (TEConstructorPatternArgNumberMismatch x c n pats) = "Constructor pattern for" <> groupedNestOnNextLine (dquotes (pretty c)) <> "of type" <> groupedNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "pattern" "patterns" n <> ", but" <> groupedNestOnNextLine (prettyPatternTupleLike 0 pats) <> "are given"
-prettyTypingError (TETupleArgNumberMismatch ity n items) = "Tuple of type" <> groupedNestOnNextLine (pretty ity) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedNestOnNextLine (prettyTupleLike 0 items) <> "are given"
-prettyTypingError (TETuplePatternArgNumberMismatch ity n pats) = "Tuple of type" <> groupedNestOnNextLine (pretty ity) <> "requires" <+> pretty n <+> plural "pattern" "patterns" n <> ", but" <> groupedNestOnNextLine (prettyPatternTupleLike 0 pats) <> "are given"
-prettyTypingError (TETooLongSubstitution n sub) = "Target context has only" <+> pretty n <+> plural "variable" "variables" n <> ", but the provided substitution" <+> groupedNestOnNextLine (prettySubst sub) <> "has more entries than that"
-prettyTypingError (TERepeatedContextEntryInWeakening ictx) = "Context" <> groupedNestOnNextLine (prettyContext (icontext2context ictx)) <> "of a contextual object has two or more entries with the same name"
+prettyTypingError (TETypeArgNumberMismatch x n argTys) = "Type" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedTempNestOnNextLine (prettyProdLike 0 argTys) <> "are given"
+prettyTypingError (TEConstructorArgNumberMismatch x c n args) = "Constructor" <> groupedTempNestOnNextLine (dquotes (pretty c)) <> "of type" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedTempNestOnNextLine (prettyTupleLike 0 args) <> "are given"
+prettyTypingError (TEConstructorPatternArgNumberMismatch x c n pats) = "Constructor pattern for" <> groupedTempNestOnNextLine (dquotes (pretty c)) <> "of type" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "requires" <+> pretty n <+> plural "pattern" "patterns" n <> ", but" <> groupedTempNestOnNextLine (prettyPatternTupleLike 0 pats) <> "are given"
+prettyTypingError (TETupleArgNumberMismatch ity n items) = "Tuple of type" <> groupedTempNestOnNextLine (pretty ity) <> "requires" <+> pretty n <+> plural "argument" "arguments" n <> ", but" <> groupedTempNestOnNextLine (prettyTupleLike 0 items) <> "are given"
+prettyTypingError (TETuplePatternArgNumberMismatch ity n pats) = "Tuple of type" <> groupedTempNestOnNextLine (pretty ity) <> "requires" <+> pretty n <+> plural "pattern" "patterns" n <> ", but" <> groupedTempNestOnNextLine (prettyPatternTupleLike 0 pats) <> "are given"
+prettyTypingError (TETooLongSubstitution n sub) = "Target context has only" <+> pretty n <+> plural "variable" "variables" n <> ", but the provided substitution" <+> groupedTempNestOnNextLine (prettySubst sub) <> "has more entries than that"
+prettyTypingError (TERepeatedContextEntryInWeakening ictx) = "Context" <> groupedTempNestOnNextLine (prettyContext (icontext2context ictx)) <> "of a contextual object has two or more entries with the same name"
 prettyTypingError (TEInternalError te) = prettyInternalTypeCheckerBug <> prettyTypingError te
 prettyTypingError (TEFor tet te) = pretty te <> hardline <> hardline <> align ("under" <+> pretty tet)
 -- prettyTypingError te = pretty $ show te
@@ -346,24 +350,25 @@ prettyModeSt MdStWk = "weakening"
 prettyModeSt MdStCo = "contraction"
 
 prettyTypingEnvironment :: (ElModeSpec m) => ElTypingEnvironment m -> Doc ann
-prettyTypingEnvironment =  group . (<> softline) . vsep . fmap prettyTypingEnvironmentItem . toList . getElTypingEnvironment
+prettyTypingEnvironment =  group . (<> line) . vsep . fmap prettyTypingEnvironmentItem . toList . getElTypingEnvironment
 
 prettyTypingEnvironmentItem :: (ElModeSpec m) => (ElId, m, ElTypingEnvironmentEntry m) -> Doc ann
 prettyTypingEnvironmentItem (x, _, TEETermDecl ity) = pretty x <+> colon <> groupedNestOnNextLine (pretty ity)
-prettyTypingEnvironmentItem (x, k, TEETypeDecl iargKis) = prettyArgKis iargKis <+> pretty x <+> colon <> pretty (KiType k)
+prettyTypingEnvironmentItem (x, k, TEETypeDecl iargKis) = prettyArgKis iargKis <> pretty x <+> colon <> pretty (KiType k)
   where
     prettyArgKis []       = mempty
-    prettyArgKis iargKis' = group . parens . (<> softline') . vsepWith comma $ fmap prettyArgKi iargKis'
+    prettyArgKis iargKis' = align . group . (<> space) . parens . (<> line') . vsepWith' (flatAlt "" " " <> "*") $ fmap ((multilineSpace <>) . prettyArgKi) iargKis'
+
     prettyArgKi (a, iki) = pretty a <+> colon <> groupedNestOnNextLine (pretty iki)
-prettyTypingEnvironmentItem (c, _, TEEConDecl _ params iargTys d) = pretty c <+> "of" <> groupedNestOnNextLine (prettyArgTys iargTys) <+> colon <> groupedNestOnNextLine (prettyTypeParams params <+> pretty d)
+prettyTypingEnvironmentItem (c, _, TEEConDecl _ params iargTys d) = pretty c <+> "of" <> groupedNestOnNextLine (prettyArgTys iargTys) <> colon <> groupedNestOnNextLine (prettyTypeParams params <+> pretty d)
   where
     prettyArgTys []       = mempty
     prettyArgTys [iargTy] = pretty iargTy
-    prettyArgTys iargTys' = group . parens . vsepWith (flatAlt "" " " <> "*") $ fmap pretty iargTys'
+    prettyArgTys iargTys' = align . group . (<> space) . parens . (<> line') . vsepWith' (flatAlt "" " " <> "*") $ fmap ((multilineSpace <>) . pretty) iargTys'
 
     prettyTypeParams []      = mempty
     prettyTypeParams [param] = pretty param
-    prettyTypeParams params' = tupled $ fmap pretty params'
+    prettyTypeParams params' = align . group . (<> space) . parens . (<> line') . vsepWith' (flatAlt "" " " <> "*") $ fmap ((multilineSpace <>) . pretty) params'
 
 instance (ElModeSpec m) => Pretty (ElTypingErrorTarget m) where
   pretty = prettyTypingErrorTarget
@@ -385,24 +390,24 @@ instance (ElModeSpec m) => Pretty (ElEvalError m) where
 
 prettyEvalError :: (ElModeSpec m) => ElEvalError m -> Doc ann
 prettyEvalError (EESubstitutionError se) = pretty se
-prettyEvalError (EEVariableNotInEnv x env) = "Variable" <> groupedNestOnNextLine (dquotes (pretty x)) <> "is not in" <> groupedNestOnNextLine (prettyEnv env)
-prettyEvalError (EENonBoolean it) = "Non-boolean result" <> groupedNestOnNextLine (pretty it) <> "from the condition of an if-then-else expression"
-prettyEvalError (EENonInteger it s) = "Non-integer result" <> groupedNestOnNextLine (pretty it) <> "for" <+> pretty s
-prettyEvalError (EENonTemplate it) = "Non-template result" <> groupedNestOnNextLine (pretty it) <> "for a force"
-prettyEvalError (EENonFunction it) = "Non-function result" <> groupedNestOnNextLine (pretty it) <> "for a function call"
-prettyEvalError (EENonTypeFunction it) = "Non-type-function result" <> groupedNestOnNextLine (pretty it) <> "for a type function call"
+prettyEvalError (EEVariableNotInEnv x env) = "Variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "is not in" <> groupedNestOnNextLine (prettyEnv env)
+prettyEvalError (EENonBoolean it) = "Non-boolean result" <> groupedTempNestOnNextLine (pretty it) <> "from the condition of an if-then-else expression"
+prettyEvalError (EENonInteger it s) = "Non-integer result" <> groupedTempNestOnNextLine (pretty it) <> "for" <+> pretty s
+prettyEvalError (EENonTemplate it) = "Non-template result" <> groupedTempNestOnNextLine (pretty it) <> "for a force"
+prettyEvalError (EENonFunction it) = "Non-function result" <> groupedTempNestOnNextLine (pretty it) <> "for a function call"
+prettyEvalError (EENonTypeFunction it) = "Non-type-function result" <> groupedTempNestOnNextLine (pretty it) <> "for a type function call"
 prettyEvalError (EENoMatchingClause it) = "No matching clause for" <> groupedNestOnNextLine (pretty it)
-prettyEvalError (EESinglePatternMismatch ipat t) = "The scrutinee" <> groupedNestOnNextLine (pretty t) <> "does not match the single pattern" <> groupedNestOnNextLine (pretty ipat)
+prettyEvalError (EESinglePatternMismatch ipat t) = "The scrutinee" <> groupedTempNestOnNextLine (pretty t) <> "does not match the single pattern" <> groupedNestOnNextLine (pretty ipat)
 prettyEvalError (EEInvalidCallForBuiltIn bi ispine) = "Invalid call of" <+> dquotes (pretty (fromBuiltIn bi)) <+> "with" <+> groupedNestOnNextLine (prettySubst (isubst2subst ispine))
-prettyEvalError (EEInvalidArgumentOfBuiltIn bi ir s) = "Invalid result" <> groupedNestOnNextLine (pretty ir) <> "for" <+> pretty s <+> "of" <+> dquotes (pretty (fromBuiltIn bi))
+prettyEvalError (EEInvalidArgumentOfBuiltIn bi ir s) = "Invalid result" <> groupedTempNestOnNextLine (pretty ir) <> "for" <+> pretty s <+> "of" <+> dquotes (pretty (fromBuiltIn bi))
 prettyEvalError (EEInvalidHeapLoc tag) = "Invalid heap address" <+> pretty tag <+> "is accessed"
 
 prettyEnv :: (ElModeSpec m) => ElEnv m -> Doc ann
-prettyEnv = group . vsepWith (flatAlt "" " ...") . fmap prettyEnvEntry . HashMap.toList . getElEnv
+prettyEnv = group . vsepWith (flatAlt "" " ... ") . fmap prettyEnvEntry . HashMap.toList . getElEnv
 
 prettyEnvEntry :: (ElModeSpec m) => (ElId, Maybe (ElITerm m)) -> Doc ann
-prettyEnvEntry (x, Just t) = dquotes (pretty x) <+> "|->" <+> groupedNestOnNextLine (pretty t)
-prettyEnvEntry (x, Nothing) = dquotes (pretty x) <+> "|-> ?"
+prettyEnvEntry (x, Just t) = dquotes (pretty x) <> groupedNestOnNextLine ("|->" <+> pretty t)
+prettyEnvEntry (x, Nothing) = dquotes (pretty x) <> groupedNestOnNextLine ("|->" <+> dquotes (pretty x))
 
 instance (ElModeSpec m) => Pretty (ElSubstError m) where
   pretty = prettySubstError
@@ -444,6 +449,9 @@ precedenceBinOp OpGt  = (2, 3, 3)
 vsepWith :: Foldable t => Doc ann -> t (Doc ann) -> Doc ann
 vsepWith d = concatWith (surround (d <> line))
 
+vsepWith' :: Foldable t => Doc ann -> t (Doc ann) -> Doc ann
+vsepWith' d = concatWith (surround (line <> d))
+
 turnstile :: Doc ann
 turnstile = "|-"
 
@@ -456,8 +464,17 @@ singlearrow = "->"
 doublearrow :: Doc ann
 doublearrow = "=>"
 
+doublesemi :: Doc ann
+doublesemi = ";;"
+
 groupedNestOnNextLine :: Doc ann -> Doc ann
-groupedNestOnNextLine = group . nest indentSize . (softline <>) . (<> softline)
+groupedNestOnNextLine = group . nest indentSize . (line <>)
+
+groupedTempNestOnNextLine :: Doc ann -> Doc ann
+groupedTempNestOnNextLine = group . (<> line) . nest indentSize . (line <>)
+
+multilineSpace :: Doc ann
+multilineSpace = flatAlt " " ""
 
 indentSize :: Int
 indentSize = 2

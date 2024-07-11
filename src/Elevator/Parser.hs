@@ -60,8 +60,9 @@ parseTyDefTop = impl <?> "top-level type definition"
       args <- parseTyDefArgs
       x <- parseUpperId
       m <- parseMode
-      symbol "="
-      cs <- sepStartBy parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
+      cs <- option [] $ do
+        symbol "="
+        sepStartBy1 parseTyDefCons (symbol "|" <?> "more constructors separated by \"|\"")
       toplevelDelimiter
       pure $ TopTypeDef args x m cs
 
