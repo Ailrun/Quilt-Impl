@@ -82,6 +82,7 @@ we write
 match xs with
 | Nil => ...
 | Cons (x, xs) => ...
+end
 ```
 
 Last but not least, identifiers starting with a captial letter is
