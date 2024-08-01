@@ -85,7 +85,7 @@ match xs with
 end
 ```
 
-Last but not least, identifiers starting with a captial letter is
+Last but not least, identifiers starting with captial letters are reserved
 for type/term constructor for datatypes, thus one cannot use
 them for normal variables.
 
