@@ -18,6 +18,7 @@
     - TwoModes
     - LinMeta
     - InfoFlowModes
+
     To use other modes, one can use the code base of this executable as a library
     and provide their own mode spec.
 - Optional arguments:
@@ -31,7 +32,7 @@ We provide the following example modes
   A mode spec with code mode (`C`) and program mode (`P`).
 - `LinMeta`  
   A mode spec with code mode (`C`), garbage-collected mode (`GC`), and garbage-free mode (`GF`).
-- `InfoFlowModes`__
+- `InfoFlowModes`  
   A mode spec with code mode (`C`), program mode (`P`), and a secure data mode (`S`).
   
 ### Examples
