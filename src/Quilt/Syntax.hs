@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingVia       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
-module Elevator.Syntax
+module Quilt.Syntax
   ( ElId
   , elId
   , decorateElId
@@ -69,16 +69,17 @@ module Elevator.Syntax
   , typeOfBuiltIn
   ) where
 
-import Data.Bifunctor    (Bifunctor (bimap))
-import Data.Hashable     (Hashable)
-import Data.Sequence     (Seq)
-import Data.Sequence     qualified as Seq
-import Data.String       (IsString (fromString))
-import Data.Text         (Text)
-import Data.Text         qualified as Text
-import Data.Tuple.Extra  (fst3)
-import Elevator.ModeSpec (ElModeSpec (modeEff))
-import Prettyprinter     (Pretty)
+import Data.Bifunctor   (Bifunctor (bimap))
+import Data.Hashable    (Hashable)
+import Data.Sequence    (Seq)
+import Data.Sequence    qualified as Seq
+import Data.String      (IsString (fromString))
+import Data.Text        (Text)
+import Data.Text        qualified as Text
+import Data.Tuple.Extra (fst3)
+import Prettyprinter    (Pretty)
+
+import Quilt.ModeSpec   (ElModeSpec (modeEff))
 
 newtype ElId = ElId Text
   deriving (Hashable, Eq, Ord, Show, Semigroup, IsString, Pretty) via Text

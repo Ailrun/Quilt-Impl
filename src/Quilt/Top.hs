@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ViewPatterns      #-}
-module Elevator.Top where
+module Quilt.Top where
 
 import Control.Exception          (IOException, catch)
 import Control.Monad.Extra        (loopM, when)
@@ -11,15 +11,16 @@ import Data.Proxy                 (Proxy)
 import Data.Text                  (Text)
 import Data.Text                  qualified as T
 import Data.Text.IO               qualified as T
-import Elevator.Evaluator
-import Elevator.ModeSpec
-import Elevator.Parser
-import Elevator.PrettyPrinter
-import Elevator.Syntax
-import Elevator.TypeChecker
 import System.Exit                (exitFailure, exitSuccess)
 import System.IO                  (hFlush, stdout)
 import System.IO.Error            (isEOFError)
+
+import Quilt.Evaluator
+import Quilt.ModeSpec
+import Quilt.Parser
+import Quilt.PrettyPrinter
+import Quilt.Syntax
+import Quilt.TypeChecker
 
 type ElTopM = StateT Integer IO
 

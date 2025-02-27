@@ -1,6 +1,6 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE OverloadedLists    #-}
-module Elevator.Evaluator where
+module Quilt.Evaluator where
 
 import Control.Applicative        (Applicative (liftA2), liftA3)
 import Control.Monad.Except       (ExceptT, MonadError (..), mapExceptT,
@@ -17,9 +17,10 @@ import Data.Sequence              (Seq (..))
 import Data.Tuple.Extra           (fst3)
 import Data.Vector                (Vector)
 import Data.Vector                qualified as Vector
-import Elevator.ModeSpec
-import Elevator.Substitution
-import Elevator.Syntax
+
+import Quilt.ModeSpec
+import Quilt.Substitution
+import Quilt.Syntax
 
 newtype ElEnv m = ElEnv { getElEnv :: HashMap ElId (Maybe (ElITerm m)) }
   deriving stock Show

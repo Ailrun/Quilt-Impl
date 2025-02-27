@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Elevator.Parser where
+module Quilt.Parser where
 
 import Control.Applicative                (liftA2, (<**>))
 import Control.Monad                      (void)
@@ -19,8 +19,8 @@ import Text.Megaparsec
 import Text.Megaparsec.Char               qualified as MPC
 import Text.Megaparsec.Char.Lexer         qualified as MPCL
 
-import Elevator.ModeSpec
-import Elevator.Syntax
+import Quilt.ModeSpec
+import Quilt.Syntax
 
 type ElParser = Parsec Void Text
 

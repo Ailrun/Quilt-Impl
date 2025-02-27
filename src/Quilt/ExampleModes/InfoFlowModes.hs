@@ -1,16 +1,17 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-module Elevator.ExampleModes.InfoFlowModes where
+{-# LANGUAGE DeriveAnyClass #-}
+module Quilt.ExampleModes.InfoFlowModes where
 
 import Data.Hashable
-import Elevator.ModeSpec
 import GHC.Generics
+
+import Quilt.ModeSpec
 
 data InfoFlowModes = MCode | MProg | MSecure
   deriving (Eq, Show, Generic, Hashable)
 
 instance ElModeSpec InfoFlowModes where
-  showMode MCode = "C"
-  showMode MProg = "P"
+  showMode MCode   = "C"
+  showMode MProg   = "P"
   showMode MSecure = "S"
 
   readModeEither "C" = Right MCode

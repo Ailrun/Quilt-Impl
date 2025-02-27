@@ -1,13 +1,13 @@
 module Main where
 
-import System.Environment                  (getArgs)
+import Data.Maybe                       (maybeToList)
+import Data.Proxy                       (Proxy (Proxy))
+import System.Environment               (getArgs)
 
-import Data.Proxy                          (Proxy (Proxy))
-import Elevator.ExampleModes.InfoFlowModes
-import Elevator.ExampleModes.LinMeta
-import Elevator.ExampleModes.TwoModes
-import Elevator.Top
-import Data.Maybe (maybeToList)
+import Quilt.ExampleModes.InfoFlowModes
+import Quilt.ExampleModes.LinMeta
+import Quilt.ExampleModes.TwoModes
+import Quilt.Top
 
 main :: IO ()
 main = do
@@ -42,17 +42,17 @@ usage err =
   putStrLn
   $ unlines
   $ maybeToList err <>
-    [ "elevatori <mode spec> [<optional module to load>]"
+    [ "quilti <accessibility spec> [<optional module to load>]"
     , ""
     , "Required Arguments:"
-    , "  <mode spec>"
-    , "    Determines which mode spec one wants to use."
-    , "    Currently it can be one of"
+    , "  <accessibility spec>"
+    , "    Determines which accessibility spec one wants to use."
+    , "    Currently we have the following built-in specs:"
     , "    - TwoModes"
     , "    - LinMeta"
     , "    - InfoFlowModes"
-    , "    To use other modes, one can use the code base of this executable as a library"
-    , "    and provide their own mode spec."
+    , "    To use other specs, one can use the code base of this executable as a library"
+    , "    and provide their own accessibility spec."
     , ""
     , "Optional Arguments:"
     , "  <optional module to load>"

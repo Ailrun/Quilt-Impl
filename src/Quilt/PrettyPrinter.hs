@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings   #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
-module Elevator.PrettyPrinter where
+module Quilt.PrettyPrinter where
 
 import Data.Sequence               (Seq (Empty))
 import Data.String                 (IsString (fromString))
@@ -10,11 +10,12 @@ import Prettyprinter.Render.String (renderString)
 
 import Data.Foldable               (Foldable (toList))
 import Data.HashMap.Strict         qualified as HashMap
-import Elevator.Evaluator          (ElEnv (..), ElEvalError (..))
-import Elevator.ModeSpec
-import Elevator.Substitution       (ElSubstError (..))
-import Elevator.Syntax
-import Elevator.TypeChecker        (ElTypingEnvironment (..),
+
+import Quilt.Evaluator             (ElEnv (..), ElEvalError (..))
+import Quilt.ModeSpec
+import Quilt.Substitution          (ElSubstError (..))
+import Quilt.Syntax
+import Quilt.TypeChecker           (ElTypingEnvironment (..),
                                     ElTypingEnvironmentEntry (..),
                                     ElTypingError (..),
                                     ElTypingErrorModeOrdering (..),

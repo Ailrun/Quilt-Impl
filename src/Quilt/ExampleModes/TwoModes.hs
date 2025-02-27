@@ -1,9 +1,10 @@
-{-# LANGUAGE DeriveAnyClass    #-}
-module Elevator.ExampleModes.TwoModes where
+{-# LANGUAGE DeriveAnyClass #-}
+module Quilt.ExampleModes.TwoModes where
 
 import Data.Hashable
-import Elevator.ModeSpec
 import GHC.Generics
+
+import Quilt.ModeSpec
 
 data TwoModes = MCode | MProg
   deriving (Eq, Show, Generic, Hashable)

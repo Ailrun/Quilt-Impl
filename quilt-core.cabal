@@ -1,5 +1,5 @@
 cabal-version:      2.4
-name:               elevator-core
+name:               quilt-core
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
@@ -13,8 +13,8 @@ version:            0.1.0.0
 
 -- The license under which the package is released.
 -- license:
-author:             Junyoung/"Clare" Jang
-maintainer:         junyoung.jang@mail.mcgill.com
+author:             Anonymous Author
+maintainer:         Anonymous Maintainer
 
 -- A copyright notice.
 -- copyright:
@@ -23,17 +23,17 @@ maintainer:         junyoung.jang@mail.mcgill.com
 
 library
   exposed-modules:
-    Elevator.Evaluator
-    Elevator.ExampleModes.InfoFlowModes
-    Elevator.ExampleModes.LinMeta
-    Elevator.ExampleModes.TwoModes
-    Elevator.ModeSpec
-    Elevator.Parser
-    Elevator.PrettyPrinter
-    Elevator.Substitution
-    Elevator.Syntax
-    Elevator.Top
-    Elevator.TypeChecker
+    Quilt.Evaluator
+    Quilt.ExampleModes.InfoFlowModes
+    Quilt.ExampleModes.LinMeta
+    Quilt.ExampleModes.TwoModes
+    Quilt.ModeSpec
+    Quilt.Parser
+    Quilt.PrettyPrinter
+    Quilt.Substitution
+    Quilt.Syntax
+    Quilt.Top
+    Quilt.TypeChecker
 
   -- Modules included in this library but not exported.
   -- other-modules:
@@ -69,7 +69,7 @@ library
 
   ghc-options:      -Wall
 
-executable elevatori
+executable quilti
   main-is:          Main.hs
 
   -- Modules included in this executable, other than Main.
@@ -78,7 +78,7 @@ executable elevatori
   build-depends:
     , base               ^>=4.16.4.0
     , containers         ^>=0.6.8
-    , elevator-core
+    , quilt-core
     , extra              ^>=1.7.12
     , hashable           ^>=1.4.3.0
     , megaparsec         ^>=9.5

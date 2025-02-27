@@ -1,5 +1,5 @@
 {-# LANGUAGE DerivingVia #-}
-module Elevator.ModeSpec
+module Quilt.ModeSpec
   ( ElMdSt(..)
 
   , ElModeSpec(..)

@@ -1,4 +1,4 @@
-# Adjoint Meta Prototype
+# Quilt Prototype
 
 ### Requirement
 
@@ -8,19 +8,19 @@
 ### Usage
 
 ```
-./elevatori <mode spec> [<optional module to load>]
+./quilti <accessibility spec> [<optional module to load>]
 ```
 
 - Required arguments:
-  - `<mode spec>`
-    Determines which mode spec one wants to use.
-    Currently it can be one of
+  - `<accessibility spec>`
+    Determines which accessibility spec one wants to use.
+    Currently we have the following built-in specs:
     - TwoModes
     - LinMeta
     - InfoFlowModes
 
-    To use other modes, one can use the code base of this executable as a library
-    and provide their own mode spec.
+    To use other specs, one can use the code base of this executable as a library
+    and provide their own accessibility spec.
 - Optional arguments:
   - `<optional module to load>`
     If provided, interpreter loads the module and then
@@ -29,23 +29,22 @@
 ### Example Modes
 We provide the following example modes
 - `TwoModes`  
-  A mode spec with code mode (`C`) and program mode (`P`).
+  An accessibility spec with global mode (`C`) and stage-local mode (`P`).
 - `LinMeta`  
-  A mode spec with code mode (`C`), garbage-collected mode (`GC`), and garbage-free mode (`GF`).
+  An accessibility spec with global mode (`C`), garbage-collected mode (`GC`), and garbage-free mode (`GF`).
 - `InfoFlowModes`  
-  A mode spec with code mode (`C`), program mode (`P`), and a secure data mode (`S`).
+  An accessibility spec with global mode (`C`), stage-local mode (`P`), and a secure data mode (`S`).
   
 ### Examples
-Some examples for the TwoModes and LinMeta mode specs are in the corresponding
+Some examples for the TwoModes and LinMeta accessibility specs are in the corresponding
 subdirectory of `/examples` directory.
 For example, `/examples/TwoModes` contains some example programs for
-`TwoModes` such as `nth.elev`.
+`TwoModes` such as `nth.quilt`.
 
 ### Syntax Difference
 
 This implementation has several syntax difference with our paper
-on adjoint metaprogramming as the syntax of this implementation is
-limited within ASCII characters.
+as the syntax of this implementation is limited within ASCII characters.
 
 First, we do not have two separate top-levels for
 the type signature and term definition of a top-level term definition.
@@ -60,7 +59,7 @@ This syntax is subject to change as it is unconventional.
 
 Another difference is that we use `Up` and `Down` instead of
 the uparrow and downarrow symbols for the up-shift and
-down-shift modalities. Furthermore, we infer the mode of inner
+down-shift modalities. Furthermore, we infer the language of inner
 type/kind for `Up`/`Down`, so for `Up^C_P`/`Down^C_P` in the
 paper syntax, we use `Up <C>` and `Down <P>`. One can read this
 as "`Up` to `<C>`" or "`Down` to `<P>`". Note that we use `<>`

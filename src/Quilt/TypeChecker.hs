@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternSynonyms   #-}
 {-# LANGUAGE ViewPatterns      #-}
-module Elevator.TypeChecker where
+module Quilt.TypeChecker where
 
 import Control.Applicative        (Applicative (..))
 import Control.Comonad            (Comonad (duplicate))
@@ -21,10 +21,11 @@ import Data.Sequence              qualified as Seq
 import Data.Set                   qualified as Set
 import Data.Traversable.Compat    (mapAccumM)
 import Data.Tuple.Extra           (fst3, thd3)
-import Elevator.ModeSpec
-import Elevator.Substitution
-import Elevator.Syntax
 import Safe.Exact                 (zipExactMay)
+
+import Quilt.ModeSpec
+import Quilt.Substitution
+import Quilt.Syntax
 
 checkModule :: (ElModeSpec m) => ElModule m -> ElCheckM m (ElIModule m)
 checkModule (ElModule [] tops) = do

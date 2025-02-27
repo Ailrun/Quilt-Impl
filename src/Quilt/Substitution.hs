@@ -1,5 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
-module Elevator.Substitution where
+module Quilt.Substitution where
 
 import Control.Applicative        (Applicative (liftA2), liftA3)
 import Control.Monad.Except       (ExceptT, MonadError (..))
@@ -9,8 +9,9 @@ import Data.Sequence              qualified as Seq
 import Data.Traversable.Compat    (mapAccumM)
 import Data.Tuple                 (swap)
 import Data.Tuple.Extra           (second3)
-import Elevator.ModeSpec
-import Elevator.Syntax
+
+import Quilt.ModeSpec
+import Quilt.Syntax
 
 applySubstKind :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIKind m -> ElSubstM m (ElIKind m)
 applySubstKind _   _   (IKiType m) = pure $ IKiType m
