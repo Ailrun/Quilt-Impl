@@ -1,11 +1,9 @@
 module Main where
 
 import Data.Maybe                       (maybeToList)
-import Data.Proxy                       (Proxy (Proxy))
 import System.Environment               (getArgs)
 
-import Quilt.ExampleModes.InfoFlowModes
-import Quilt.ExampleModes.LinMeta
+import Quilt.ExampleModes.ThreeModes
 import Quilt.ExampleModes.TwoModes
 import Quilt.Top
 
@@ -20,14 +18,10 @@ main = do
       | "--help" `elem` args -> usage Nothing
       | otherwise -> print "Loading more than 1 module is not yet supported"
   where
-    execute "TwoModes" Nothing = runElTopM $ interpreter (Proxy :: Proxy TwoModes) defaultOptions
-    execute "LinMeta" Nothing = runElTopM $ interpreter (Proxy :: Proxy LinMeta) defaultOptions
-    execute "InfoFlowModes" Nothing = runElTopM $ interpreter (Proxy :: Proxy InfoFlowModes) defaultOptions
     execute _          (Just "--help") = usage Nothing
-    execute "TwoModes" (Just fp) = runElTopM $ interpreterWithFile (Proxy :: Proxy TwoModes) fp defaultOptions
-    execute "LinMeta" (Just fp) = runElTopM $ interpreterWithFile (Proxy :: Proxy LinMeta) fp defaultOptions
-    execute "InfoFlowModes" (Just fp) = runElTopM $ interpreterWithFile (Proxy :: Proxy InfoFlowModes) fp defaultOptions
-    execute "--help" _ = usage Nothing
+    execute "--help"   _ = usage Nothing
+    execute "ThreeModes" mayFp = runElTopM $ interpreterWithMayFile threeModesProxy mayFp defaultOptions
+    execute "TwoModes" mayFp = runElTopM $ interpreterWithMayFile twoModesProxy mayFp defaultOptions
     execute _ _ = usage $ Just "Invalid mode spec"
 
 defaultOptions :: ElTopOptions
@@ -48,11 +42,10 @@ usage err =
     , "  <accessibility spec>"
     , "    Determines which accessibility spec one wants to use."
     , "    Currently we have the following built-in specs:"
+    , "    - ThreeModes"
     , "    - TwoModes"
-    , "    - LinMeta"
-    , "    - InfoFlowModes"
     , "    To use other specs, one can use the code base of this executable as a library"
-    , "    and provide their own accessibility spec."
+    , "    and provide their own accessibility spec as an instance of \"ElModeSpec\" typeclass."
     , ""
     , "Optional Arguments:"
     , "  <optional module to load>"

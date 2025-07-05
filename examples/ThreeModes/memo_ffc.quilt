@@ -1,0 +1,104 @@
+data a OptionB<B> = NoneB | SomeB of a;;
+
+liftInt n : Int<B> -o Int<B> Up<A> Down<B> =
+  match n with
+  | 0 => alloc (susp 0)
+  | n =>
+    load nA_ = liftInt (n - 1) in
+    alloc (susp (1 + force nA_))
+  end;;
+
+dupInt n : Int<B> -o (Int<B> * Int<B>) =
+  match n with
+  | 0 => (0, 0)
+  | n =>
+    let (m, l) = dupInt (n - 1) in
+    (m + 1, l + 1)
+  end;;
+
+unliftInt n : Int<B> Up<A> Down<B> -o Int<B> =
+  load nA_ = n in
+  force nA_;;
+
+liftIntOption nO : Int<B> OptionB -o Int<B> OptionB Up<A> Down<B> =
+  match nO with
+  | NoneB => alloc (susp NoneB)
+  | SomeB n =>
+    load nA_ = liftInt n in
+    alloc (susp (SomeB (force nA_)))
+  end;;
+
+unliftIntOption n : Int<B> OptionB Up<A> Down<B> -o Int<B> OptionB =
+  load nA_ = n in
+  force nA_;;
+
+withAllocIntOptionArray n f : Int<B> -o (Int<B> OptionB Array -o (Int<B> OptionB Array * Int<B>)) -o Int<B> =
+  unliftInt
+    ((withAlloc : (a : Type<B> Up<A>) -> (b : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o ((force a) Array -o ((force a) Array * (force b) Up<A> Down<B>)) -o (force b) Up<A> Down<B>)
+      (susp(Int<B> OptionB)) (susp(Int<B>)) n (alloc (susp NoneB)) (fun arr -> let (arr_, r) = f arr in (arr_, liftInt r)));;
+
+readIntOption n arr : Int<B> -o Int<B> OptionB Array -o (Int<B> OptionB * Int<B> OptionB Array) =
+  let (r, arr_) =
+    (read : (a : Type<B> Up<A>) -> Int<B> -o (force a) Array -o ((force a) Up<A> Down<B> * (force a) Array))
+      (susp(Int<B> OptionB)) n arr in
+  (unliftIntOption r, arr_);;
+
+writeIntOption n v arr : Int<B> -o Int<B> OptionB -o Int<B> OptionB Array -o Int<B> OptionB Array =
+  (write : (a : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o (force a) Array -o (force a) Array)
+    (susp(Int<B> OptionB)) n (liftIntOption v) arr;;
+
+funA x : Int<A> -o Int<A> =
+  if x > 100
+  then x - 10
+  else funA (funA (x + 11));;
+
+convertToA n : Int<B> -o Int<A> Down<B> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertToA (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFromA n : Int<A> Down<B> -o Int<B> =
+  load nA_ = n in
+  match nA_ with
+  | 0 => 0
+  | nA_ =>
+     1 + convertFromA (alloc (nA_ - 1))
+  end;;
+
+funAInB arr0 n : (Int<B> OptionB Array) -o Int<B> -o (Int<B> * Int<B> OptionB Array) =
+  load nA_ = liftInt n in
+  let (vO, arr1) = readIntOption (force nA_) arr0 in
+  match vO with
+  | NoneB =>
+    load mA_ = convertToA (force nA_) in
+    let v = convertFromA (alloc (funA mA_)) in
+    let (v1, v2) = dupInt v in
+    let arr2 = writeIntOption (force nA_) (SomeB v1) arr1 in
+    (v2, arr2)
+  | SomeB v => (v, arr1)
+  end;;
+
+convertToB n : Int<C> -o Int<B> Down<C> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertToB (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFromB n : Int<B> Down<C> -o Int<C> =
+  load nB_ = n in
+  match nB_ with
+  | 0 => 0
+  | nB_ =>
+     1 + convertFromB (alloc (nB_ - 1))
+  end;;
+
+funAInC arr n : (Int<B> OptionB Array) Down<C> -o Int<C> -o (Int<C> * Int<B> OptionB Array Down<C>) =
+  load arrB0_ = arr in
+  load nB_ = convertToB n in
+  let (r, arrB1_) = funAInB arrB0_ nB_ in
+  (convertFromB (alloc r), alloc arrB1_);;

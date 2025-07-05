@@ -37,6 +37,10 @@ data ElTopOptions
 runElTopM :: ElTopM a -> IO a
 runElTopM = flip evalStateT 0
 
+interpreterWithMayFile :: (ElModeSpec m) => Proxy m -> Maybe FilePath -> ElTopOptions -> ElTopM ()
+interpreterWithMayFile proxy Nothing   = interpreter proxy
+interpreterWithMayFile proxy (Just fp) = interpreterWithFile proxy fp
+
 interpreter :: (ElModeSpec m) => Proxy m -> ElTopOptions -> ElTopM ()
 interpreter (_ :: Proxy m) opt = interpreterLoop opt 0 (ElIModule [] [] :: ElIModule m)
 
