@@ -1,0 +1,27 @@
+funA x : Int<A> -o Int<A> =
+  if x > 100
+  then x - 10
+  else funA (funA (x + 11));;
+
+convertTo n : Int<B> -o Int<A> Down<B> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertTo (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFrom n : Int<A> Down<B> -o Int<B> =
+  load nA_ = n in
+  match nA_ with
+  | 0 => 0
+  | nA_ =>
+     1 + convertFrom (alloc (nA_ - 1))
+  end;;
+
+foreignFunCall f n : (Int<A> -o Int<A>) Down<B> -o Int<B> -o Int<B> =
+  load nA_ = convertTo n in
+  load f_ = f in
+  convertFrom (alloc (f_ nA_));;
+
+funB : Int<B> -o Int<B> = foreignFunCall (alloc funA);;

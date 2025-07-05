@@ -1,7 +1,7 @@
-pow n : Int<P> -> [x:Int<P> |- Int<P>] Up<C> Down<P> =
+pow n : Int<B> -> [x:Int<B> |- Int<B>] Up<A> Down<B> =
   match n with
-  | 0 => store (susp (x . 1))
+  | 0 => alloc (susp (x . 1))
   | n =>
     load pow_ = pow (n - 1) in
-    store (susp (x . x * force pow_ @ (x)))
+    alloc (susp (x . x * force pow_ @ (x)))
   end;;

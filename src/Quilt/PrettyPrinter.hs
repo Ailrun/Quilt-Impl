@@ -143,7 +143,7 @@ prettyTerm p (TmSusp Empty t) = parensIf (p > 10) $ "susp" <+> prettyTerm 11 t
 prettyTerm p (TmSusp ctxh t) = parensIf (p > 10) $ "susp" <> groupedNestOnNextLine (align (parens (group (prettyContextHat ctxh <+> dot <> nest indentSize (line <> pretty t)))))
 prettyTerm p (TmForce t Empty) = parensIf (p > 10) $ "force" <+> prettyTerm 11 t
 prettyTerm p (TmForce t sub) = parensIf (p > 10) $ "force" <+> prettyTerm 11 t <> groupedNestOnNextLine ("@" <+> prettySubst sub)
-prettyTerm p (TmStore t) = parensIf (p > 10) . group . nest indentSize $ "store" <> line <> prettyTerm 11 t
+prettyTerm p (TmStore t) = parensIf (p > 10) . group . nest indentSize $ "alloc" <> line <> prettyTerm 11 t
 prettyTerm p (TmMatch t mayTy [(PatLoad pat, t0)]) =
   parensIf (p > 0)
   . align
@@ -301,7 +301,7 @@ prettyTypingError (TEInvalidTypeForInt ity) = "An int term must have an Int type
 prettyTypingError (TEInvalidTypeForTuple ity) = "A tuple must have a product type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidTypeForSusp ity) = "Term construct susp must have a template type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be used for a susp"
 prettyTypingError (TEInvalidTermBodyForForce it ity) = "Term" <> groupedTempNestOnNextLine (pretty it) <> "of a non-template type" <> groupedNestOnNextLine (pretty ity <> line) <> "cannot be forced"
-prettyTypingError (TEInvalidTypeForStore ity) = "Term construct store must have a pointer type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
+prettyTypingError (TEInvalidTypeForStore ity) = "Term construct alloc must have a pointer type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidPointerTypeForLoad ity) = "A non-pointer type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be loaded"
 prettyTypingError (TEInvalidTypeForLam ity) = "A function must have a function type, but this type is provided:" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidFunctionForApp it ity) = "Term" <> groupedTempNestOnNextLine (pretty it) <> "of a non-function type" <> groupedTempNestOnNextLine (pretty ity) <> "cannot be called"

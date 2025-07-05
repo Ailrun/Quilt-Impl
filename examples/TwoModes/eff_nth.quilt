@@ -1,29 +1,29 @@
-data a ListP<P> = NilP | ConsP of a * a ListP;;
+data a ListB<B> = NilB | ConsB of a * a ListB;;
 
-head : (a : Type<P>) -> a ListP -> a = fun a xs ->
+head : (a : Type<B>) -> a ListB -> a = fun a xs ->
   match xs with
-  | ConsP (x, xs) => x
+  | ConsB (x, xs) => x
   end;;
 
-tail a xs : (a : Type<P>) -> a ListP -> a ListP =
+tail a xs : (a : Type<B>) -> a ListB -> a ListB =
   match xs with
-  | ConsP (x, xs') => xs'
+  | ConsB (x, xs') => xs'
   end;;
 
-nthHelper n : Int<C> -> [a : Type<P>, xs : a ListP |- a] Up <C> =
+nthHelper n : Int<A> -> [a : Type<B>, xs : a ListB |- a] Up <A> =
   match n with
   | 0 => susp (a, xs . head a xs)
   | _ => susp (a, xs . force (nthHelper (n - 1)) @ (a, (tail a xs)))
   end;;
 
-convertNat n : Int<P> -> Int<C> Down <P> =
+convertNat n : Int<B> -> Int<A> Down <B> =
   match n with
-  | 0 => store 0
+  | 0 => alloc 0
   | _ =>
     load nC = convertNat (n - 1) in
-    store (1 + nC)
+    alloc (1 + nC)
   end;;
 
-nth n : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> =
+nth n : Int<B> -> [a : Type<B>, xs : a ListB |- a] Up <A> Down <B> =
   load nC = convertNat n in
-  store (nthHelper nC);;
+  alloc (nthHelper nC);;

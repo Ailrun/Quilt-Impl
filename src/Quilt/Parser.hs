@@ -233,7 +233,7 @@ parseShiftTerm =
   choice
     [ parseSuspCommon TmSusp parseAtomicTerm parseTerm
     , parseForceCommon TmForce parseAtomicTerm
-    , keyword "store" $> TmStore <*> parseAtomicTerm
+    , keyword "alloc" $> TmStore <*> parseAtomicTerm
     ]
 
 parseDataTerm :: (ElModeSpec m) => ElParser (ElTerm m)
@@ -450,7 +450,7 @@ keywords =
   , "Down"
   , "Int"
   , "Bool"
-  , "store"
+  , "alloc"
   , "load"
   , "in"
   , "susp"
@@ -484,7 +484,7 @@ symbol txt = void (lexeme (MPC.string txt)) <?> ("symbol " <> show txt)
 
 keyword :: Text -> ElParser ()
 keyword txt
-  | txt `elem` keywords = lexeme (MPC.string txt *> notFollowedBy restIdChar) <?> ("keyword " <> show txt)
+  | txt `elem` keywords = lexeme (try $ MPC.string txt *> notFollowedBy restIdChar) <?> ("keyword " <> show txt)
   | otherwise           = error $ "Parser bug: unknown keyword " <> show txt
 
 lowerIdentifier :: ElParser Text

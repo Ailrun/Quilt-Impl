@@ -2,12 +2,16 @@
 module Quilt.ExampleModes.LinMeta where
 
 import Data.Hashable
+import Data.Proxy     (Proxy (Proxy))
 import GHC.Generics
 
 import Quilt.ModeSpec
 
 data LinMeta = MCode | MGC | MGF
   deriving (Eq, Show, Generic, Hashable)
+
+linMetaProxy :: Proxy LinMeta
+linMetaProxy = Proxy
 
 instance ElModeSpec LinMeta where
   showMode MCode = "C"

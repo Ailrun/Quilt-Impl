@@ -1,18 +1,18 @@
-convertNat n : Int<P> -> Int<C> Down <P> =
+convertNat n : Int<B> -> Int<A> Down <B> =
   match n with
-  | 0 => store 0
+  | 0 => alloc 0
   | n =>
-    load nC_ = convertNat (n - 1) in
-    store (1 + nC_)
+    load nA_ = convertNat (n - 1) in
+    alloc (1 + nA_)
   end;;
 
-powHelper n : Int<C> -> [x:Int<P> |- Int<P>] Up<C> =
+powHelper n : Int<A> -> [x:Int<B> |- Int<B>] Up<A> =
   match n with
   | 0 => susp (x . 1)
   | n =>
     susp (x . x * force (powHelper (n - 1)) @ (x))
   end;;
 
-pow n : Int<P> -> [x:Int<P> |- Int<P>] Up<C> Down<P> =
-  load nC_ = convertNat n in
-  store (powHelper nC_);;
+pow n : Int<B> -> [x:Int<B> |- Int<B>] Up<A> Down<B> =
+  load nA_ = convertNat n in
+  alloc (powHelper nA_);;

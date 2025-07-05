@@ -40,7 +40,7 @@ library
 
   build-depends:
     , array                       ^>=0.5.4.0
-    , base                        ^>=4.16.4.0
+    , base                        ^>=4.17.2.0
     , base-compat                 ^>=0.13.1
     , bytestring                  ^>=0.12.0.2
     , comonad                     ^>=5.0.8
@@ -76,7 +76,7 @@ executable quilti
   -- other-modules:
 
   build-depends:
-    , base               ^>=4.16.4.0
+    , base               ^>=4.17.2.0
     , containers         ^>=0.6.8
     , quilt-core
     , extra              ^>=1.7.12

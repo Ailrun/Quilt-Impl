@@ -1,19 +1,19 @@
-data a ListP<P> = NilP | ConsP of a * a ListP;;
+data a ListB<B> = NilB | ConsB of a * a ListB;;
 
-head a xs : (a : Type<P>) -> a ListP -> a =
+head a xs : (a : Type<B>) -> a ListB -> a =
   match xs with
-  | ConsP (x, xs') => x
+  | ConsB (x, xs') => x
   end;;
 
-tail a xs : (a : Type<P>) -> a ListP -> a ListP =
+tail a xs : (a : Type<B>) -> a ListB -> a ListB =
   match xs with
-  | ConsP (x, xs') => xs'
+  | ConsB (x, xs') => xs'
   end;;
 
-nth n : Int<P> -> [a : Type<P>, xs : a ListP |- a] Up <C> Down <P> =
+nth n : Int<B> -> [a : Type<B>, xs : a ListB |- a] Up <A> Down <B> =
   match n with
-  | 0 => store (susp (a, xs . head a xs))
+  | 0 => alloc (susp (a, xs . head a xs))
   | _ =>
     load nth_ = nth (n - 1) in
-    store (susp (a, xs . force nth_ @ (a, (tail a xs))))
+    alloc (susp (a, xs . force nth_ @ (a, (tail a xs))))
   end;;
