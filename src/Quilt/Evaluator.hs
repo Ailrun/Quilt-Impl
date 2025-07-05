@@ -58,10 +58,10 @@ eval (ITmVar x) = do
     Just Nothing  -> pure $ ITmVar x
     Nothing       -> throwError $ EEVariableNotInEnv x env -- "Variable \"" <> show x <> "\" has no reference in " <> show env
 eval (ITmBuiltIn bi) = evalBuiltIn bi []
-eval (ITmArrayTag n) = pure $ ITmArrayTag n
+eval tm@(ITmArrayTag _) = pure tm
 eval (ITmData c cn args) = ITmData c cn <$> traverse eval args
-eval ITmTrue = pure ITmTrue
-eval ITmFalse = pure ITmFalse
+eval tm@ITmTrue = pure tm
+eval tm@ITmFalse = pure tm
 eval (ITmIte t t0 t1) = do
   r <- eval t
   case r of
@@ -72,7 +72,7 @@ eval (ITmIte t t0 t1) = do
       | otherwise -> pure $ ITmIte r t0 t1
   where
     nonBooleanError = throwError . EENonBoolean -- "Non-boolean result from the condition \"" <> show r <> "\""
-eval (ITmInt n) = pure $ ITmInt n
+eval tm@(ITmInt _) = pure tm
 eval (ITmBinOp bop t0 t1) = do
   r0 <- eval t0
   r1 <- eval t1
@@ -106,8 +106,8 @@ eval (ITmForce h t sub) = do
       | checkNormHead r -> throwError $ EENonTemplate r -- "Non Template result \"" <> show r <> "\" for force"
       | otherwise -> pure $ ITmForce h r sub
 eval (ITmStore h t) = ITmStore h <$> eval t
-eval (ITmLam x ty t) = pure $ ITmLam x ty t
-eval (ITmTLam x ki t) = pure $ ITmTLam x ki t
+eval tm@ITmLam{} = pure tm
+eval tm@ITmTLam{} = pure tm
 eval t
   | Just (bi, spine) <- findBuiltInSpine t = evalBuiltIn bi spine
 eval (ITmApp t0 t1) = do
@@ -166,7 +166,7 @@ evalBuiltIn BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm t0, ISETerm t1, ISETe
       tag <- heapAllocArray (fromInteger n) r1
       r <- eval (ITmApp r2 (ITmArrayTag tag))
       case r of
-        ITmTuple [ITmArrayTag tag', v] -> v <$ heapDeleteArrayOf tag'
+        ITmTuple [_, v] -> v <$ heapDeleteArrayOf tag
         _
           | checkNormHead r -> throwError $ EEInvalidArgumentOfBuiltIn BIWithAlloc r "the callback"
           | otherwise       -> pure r
@@ -183,7 +183,7 @@ evalBuiltIn BIWrite     [ISEType ty0, ISETerm t0, ISETerm t1, ISETerm t2]       
       case r2 of
         ITmArrayTag tag -> do
           heapModifyArray tag (`Vector.update` [(fromInteger n, r1)])
-          pure $ ITmArrayTag tag
+          pure r2
         _
           | checkNormHead r2 -> throwError $ EEInvalidArgumentOfBuiltIn BIWrite r2 "the array argument"
           | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1, ISETerm r2]
@@ -199,7 +199,7 @@ evalBuiltIn BIRead      [ISEType ty0, ISETerm t0, ISETerm t1]                   
       case r1 of
         ITmArrayTag tag -> do
           array <- heapGetArray tag
-          pure $ ITmTuple [array Vector.! fromInteger n, ITmArrayTag tag]
+          pure $ ITmTuple [array Vector.! fromInteger n, r1]
         _
           | checkNormHead r1 -> throwError $ EEInvalidArgumentOfBuiltIn BIRead r1 "the array argument"
           | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
@@ -215,19 +215,19 @@ buildBuiltInSpine bi = foldl app (ITmBuiltIn bi)
     app t0 (ISEType ty1) = ITmTApp t0 ty1
 
 refineTemplate :: (ElModeSpec m) => m -> ElITerm m -> ElEvalM m (ElITerm m)
-refineTemplate _ (ITmVar x)            = pure $ ITmVar x
-refineTemplate _ (ITmBuiltIn bi)       = pure $ ITmBuiltIn bi
-refineTemplate _ (ITmArrayTag n)       = pure $ ITmArrayTag n
+refineTemplate _ tm@(ITmVar _)         = pure tm
+refineTemplate _ tm@(ITmBuiltIn _)     = pure tm
+refineTemplate _ tm@(ITmArrayTag _)    = pure tm
 refineTemplate n (ITmData c cn args)   = ITmData c cn <$> traverse (refineTemplate n) args
-refineTemplate _ ITmTrue               = pure ITmTrue
-refineTemplate _ ITmFalse              = pure ITmFalse
+refineTemplate _ tm@ITmTrue            = pure tm
+refineTemplate _ tm@ITmFalse           = pure tm
 refineTemplate n (ITmIte t t0 t1)      =
   liftA3
     ITmIte
     (refineTemplate n t)
     (refineTemplate n t0)
     (refineTemplate n t1)
-refineTemplate _ (ITmInt n)            = pure $ ITmInt n
+refineTemplate _ tm@(ITmInt _)         = pure tm
 refineTemplate n (ITmBinOp bop t0 t1)  = do
   liftA2
     (ITmBinOp bop)
