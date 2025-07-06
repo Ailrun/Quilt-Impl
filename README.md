@@ -5,6 +5,14 @@
 - GHC 9.4.8
 - Cabal 3.8 or higher (preferably Cabal 3.14.2.0)
 
+### Required Setting
+
+You may need to update cabal index, by running
+
+```
+cabal update
+```
+
 ### Usage
 
 ```
