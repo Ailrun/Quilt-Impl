@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
-module Quilt.ExampleModes.TwoModes where
+module Quilt.ExampleModes.TwoIntModes where
 
 import Data.Hashable
 import Data.Proxy     (Proxy (Proxy))
@@ -7,13 +7,13 @@ import GHC.Generics
 
 import Quilt.ModeSpec
 
-data TwoModes = MA | MB
+data TwoIntModes = MA | MB
   deriving (Eq, Show, Generic, Hashable)
 
-twoModesProxy :: Proxy TwoModes
-twoModesProxy = Proxy
+twoIntModesProxy :: Proxy TwoIntModes
+twoIntModesProxy = Proxy
 
-instance ElModeSpec TwoModes where
+instance ElModeSpec TwoIntModes where
   showMode MA = "A"
   showMode MB = "B"
 
@@ -24,8 +24,6 @@ instance ElModeSpec TwoModes where
   MB <=!! MA = True
   m  <=!! n  = m == n
 
-  modeSig MB _ = False
-  modeSig _  _ = True
+  modeSig _ _ = True
 
-  modeEff MB = Just MA
-  modeEff _  = Nothing
+  modeEff _ = Nothing

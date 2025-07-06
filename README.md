@@ -16,6 +16,7 @@
     Determines which accessibility spec one wants to use.
     Currently we have the following built-in specs:
     - ThreeModes
+    - TwoIntModes
     - TwoModes
 
     To use other specs, one can use the code base of this executable as a library
@@ -29,8 +30,12 @@
 We provide the following example modes
 - `ThreeModes`  
   An accessibility spec with one unrestricted mode `A` and two linear modes `B` and `C` where `A > B, C`, `B >= C`, and `C >= B`.
-- `TwoModes`  
+  Linear mutable arrays are available for `B` and `C`.
+- `TwoIntModes`  
   An accessibility spec with two unrestricted modes `A` and `B` where `A > B`.
+- `TwoModes`  
+  An accessibility spec with one unrestricted mode `A` and one linear mode `B` where `A > B`.
+  Linear mutable arrays are available for `B`.
   
 ### Examples
 Some examples for the ThreeModes and TwoModes accessibility specs are
@@ -76,6 +81,10 @@ match xs with
 | Cons (x, xs) => ...
 end
 ```
+
+The order of arguments in built-in interface for mutable array is a
+bit different. `read` and `write` first take the index of an entry and
+then take the array.
 
 Last but not least, identifiers starting with captial letters are
 reserved for type/term constructor for datatypes, thus one cannot use

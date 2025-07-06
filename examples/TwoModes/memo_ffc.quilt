@@ -90,25 +90,3 @@ callExpensiveFun arr0 n : (Int<B> OptionB Array) -o Int<B> -o (Int<B> * Int<B> O
     let OneB = discardInt n2 in
     (v, arr1)
   end;;
-
-convertToInC n : Int<C> -o Int<B> Down<C> =
-  match n with
-  | 0 => alloc 0
-  | n =>
-    load nA_ = convertToInC (n - 1) in
-    alloc (1 + nA_)
-  end;;
-
-convertFromInC n : Int<B> Down<C> -o Int<C> =
-  load nB_ = n in
-  match nB_ with
-  | 0 => 0
-  | nB_ =>
-     1 + convertFromInC (alloc (nB_ - 1))
-  end;;
-
-callExpensiveFunInC arr n : (Int<B> OptionB Array) Down<C> -o Int<C> -o (Int<C> * Int<B> OptionB Array Down<C>) =
-  load arrB0_ = arr in
-  load nB_ = convertToInC n in
-  let (r, arrB1_) = callExpensiveFun arrB0_ nB_ in
-  (convertFromInC (alloc r), alloc arrB1_);;

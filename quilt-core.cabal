@@ -27,6 +27,7 @@ library
     Quilt.ExampleModes.InfoFlowModes
     Quilt.ExampleModes.LinMeta
     Quilt.ExampleModes.ThreeModes
+    Quilt.ExampleModes.TwoIntModes
     Quilt.ExampleModes.TwoModes
     Quilt.ModeSpec
     Quilt.Parser
