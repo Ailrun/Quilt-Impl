@@ -90,7 +90,7 @@ eval (ITmMatch m t ty brs) = do
   then do
     b <- firstMatchingBranch brs r
     eval b
-  else pure $ ITmMatch m t ty brs
+  else pure $ ITmMatch m r ty brs
 eval (ITmSusp m ctxh t) = do
   (ctxh', t') <- substM2evalM $ freshIContextHatInTerm ctxh t
   envExtend ctxh'
