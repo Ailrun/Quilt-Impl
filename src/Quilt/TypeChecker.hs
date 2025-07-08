@@ -304,11 +304,7 @@ checkType ity TmFalse
 checkType ity (TmIte t0 t1 t2) = do
   (it0, ity0, _) <- inferType t0
   case ity0 of
-    ITyBool _ -> do
-      liftA2
-        (ITmIte it0)
-        (checkType ity t1)
-        (checkType ity t2)
+    ITyBool _ -> uncurry (ITmIte it0) <$> unionPair (checkType ity) (t1, t2)
     _ -> throwError $ TEInvalidConditionForIte it0 ity0
 checkType ity (TmInt n)
   | ITyInt _ <- ity = pure $ ITmInt n
@@ -616,6 +612,14 @@ instance (ElModeSpec m) => Monad (ElCheckUnionM m) where
     (buse, b) <- runElCheckM (runElCheckUnionM (f a)) env tctx
     liftEither $ (, b) <$> unionUsage ause buse
 
+unionPair :: (ElModeSpec m) => (a -> ElCheckM m b) -> (a, a) -> ElCheckM m (b, b)
+unionPair f (a1, a2) =
+  runElCheckUnionM
+  $ liftA2
+      (,)
+      (ElCheckUnionM (f a1))
+      (ElCheckUnionM (f a2))
+
 unionTraverse :: (ElModeSpec m) => (a -> ElCheckM m b) -> [a] -> ElCheckM m [b]
 unionTraverse _ []     = pure []
 unionTraverse f [a]    = pure <$> f a
@@ -809,6 +813,9 @@ getCEUType _           = Nothing
 
 {-# COMPLETE UEmpty, (:+*), (:+?) #-}
 
+sameUsage :: (ElModeSpec m) => ElContextUsage m -> ElContextUsage m -> Bool
+sameUsage (ElContextUsage use0) (ElContextUsage use1) = Seq.sortOn fst use0 == Seq.sortOn fst use1
+
 mergeUsage :: (ElModeSpec m) => ElContextUsage m -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
 mergeUsage UEmpty            use1 = pure use1
 mergeUsage (use0 :+* (x, k)) use1
@@ -874,7 +881,7 @@ removeTypeVs :: (ElModeSpec m) => Seq (ElId, m) -> ElContextUsage m -> Either (E
 removeTypeVs vs use = foldlM (flip removeTypeV) use vs
 
 removeTermV :: (ElModeSpec m) => (ElId, m) -> ElContextUsage m -> Either (ElTypingError m) (ElContextUsage m)
-removeTermV (_, k) UEmpty            = UEmpty <$ testIsWkMode k
+removeTermV (x, k) UEmpty            = UEmpty <$ withErrorFor (TETVariable x) (testIsWkMode k)
 removeTermV (x, k) (use :+* (y, k')) = (:+* (y, k')) <$> removeTermV (x, k) use
 removeTermV (x, k) (use :+? (y, k'))
   | x == y                           = use <$ testIsSameMode k k'
