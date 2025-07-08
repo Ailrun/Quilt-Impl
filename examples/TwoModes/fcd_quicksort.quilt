@@ -1,0 +1,217 @@
+withAllocB a b n v f : (a : Type<B> Up<A>) -> (b : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o ((force a) Array -o ((force a) Array * (force b) Up<A> Down<B>)) -o (force b) Up<A> Down<B> =
+  (withAlloc : (a : Type<B> Up<A>) -> (b : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o ((force a) Array -o ((force a) Array * (force b) Up<A> Down<B>)) -o (force b) Up<A> Down<B>)
+    a b n v f;;
+
+readB a n arr : (a : Type<B> Up<A>) -> Int<B> -o (force a) Array -o ((force a) Up<A> Down<B> * (force a) Array) =
+  (read : (a : Type<B> Up<A>) -> Int<B> -o (force a) Array -o ((force a) Up<A> Down<B> * (force a) Array))
+      a n arr;;
+
+writeB a n v arr : (a : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o (force a) Array -o (force a) Array =
+  (write : (a : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o (force a) Array -o (force a) Array)
+    a n v arr;;
+
+arrayToInt arr0 i : Int<B> Array -o Int<B> -o (Int<B> * Int<B> Array) =
+  let (i0, i1) = dupInt i in
+  if i0 <= 0
+  then
+    let (v, arr1) = readB (susp Int<B>) i1 arr0 in
+    load vA = v in
+    (force vA, arr1)
+  else
+    let (i2, i3) = dupInt i1 in
+    let (v, arr1) = readB (susp Int<B>) i2 arr0 in
+    load vA = v in
+    let (v', arr2) = arrayToInt arr1 (i3 - 1) in
+    (10 * v' + force vA, arr2);;
+
+data UnitB<B> = OneB;;
+
+dupInt n : Int<B> -o (Int<B> * Int<B>) =
+  match n with
+  | 0 => (0, 0)
+  | n =>
+    let (m, l) = dupInt (n - 1) in
+    (m + 1, l + 1)
+  end;;
+
+liftInt n : Int<B> -o Int<B> Up<A> Down<B> =
+  match n with
+  | 0 => alloc (susp 0)
+  | n =>
+    let (n1, n2) = dupInt n in
+    load nA_ = liftInt (n1 / 2) in
+    if n2 % 2 == 1
+    then alloc (susp (1 + 2 * force nA_))
+    else alloc (susp (2 * force nA_))
+  end;;
+
+discardInt n : Int<B> -o UnitB = if n < 0 then OneB else OneB;;
+
+swapB arr0 i j : Int<B> Array -o Int<B> -o Int<B> -o Int<B> Array =
+  let (i0, i1) = dupInt i in
+  let (j0, j1) = dupInt j in
+  let (x, arr1) = readB (susp Int<B>) i0 arr0 in
+  let (y, arr2) = readB (susp Int<B>) j0 arr1 in
+  let arr3 = writeB (susp Int<B>) i1 y arr2 in
+  writeB (susp Int<B>) j1 x arr3;;
+
+swapA arr0 i j : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o Int<B> Array =
+  swapB arr0 (convertFrom i) (convertFrom j);;
+
+convertTo n : Int<B> -o Int<A> Down<B> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertTo (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFrom n : Int<A> Down<B> -o Int<B> =
+  load nA_ = n in
+  match nA_ with
+  | 0 => 0
+  | nA_ =>
+     1 + convertFrom (alloc (nA_ - 1))
+  end;;
+
+partitionLoop arr0 hi i j pivot
+  : Int<B> Array
+  -o Int<A> Down<B>
+  -o Int<A> Down<B>
+  -o Int<A> Down<B>
+  -o Int<B> Up<A> Down<B>
+  -o (Int<A> Down<B> * Int<B> Array) =
+  load hiA = hi in
+  load iA = i in
+  load jA = j in
+  load pivotA = pivot in
+  if jA >= hiA
+  then (alloc iA, swapA arr0 (alloc iA) (alloc hiA))
+  else
+    let (vj, arr1) = readB (susp Int<B>) (convertFrom (alloc jA)) arr0 in
+    load vjA = vj in
+    let (i', arr2) : Int<A> Down<B> * Int<B> Array =
+      if force vjA <= force pivotA
+      then (alloc (iA + 1), swapA arr1 (alloc iA) (alloc jA))
+      else (alloc iA, arr1)
+    in
+    partitionLoop arr2 (alloc hiA) i' (alloc (jA + 1)) (alloc pivotA);;
+
+partition arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o (Int<A> Down<B> * Int<B> Array) =
+  load loA = lo in
+  load hiA = hi in
+  let (pivot, arr1) = readB (susp Int<B>) (convertFrom (alloc hiA)) arr0 in
+  partitionLoop arr1 (alloc hiA) (alloc loA) (alloc loA) pivot;;
+
+quickSort arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o Int<B> Array =
+  load loA = lo in
+  load hiA = hi in
+  if loA >= hiA
+  then arr0
+  else if (loA < 0)
+  then arr0
+  else
+    let (p, arr1) = partition arr0 (alloc loA) (alloc hiA) in
+    load pA = p in
+    let arr2 = quickSort arr1 (alloc loA) (alloc (pA - 1)) in
+    quickSort arr2 (alloc (pA + 1)) (alloc hiA);;
+
+data a ListB<B> = NilB | ConsB of a * a ListB;;
+
+liftListB a l : (a : Type<B> Up<A>) -> (force a) Up<A> Down<B> ListB -o (force a) ListB Up<A> Down<B> =
+  match l with
+  | NilB => alloc (susp NilB)
+  | ConsB (va, l) =>
+    load vaA = va in
+    load lA = liftListB a l in
+    alloc (susp (ConsB (force vaA, force lA)))
+  end;;
+
+length l : Int<B> ListB -o (Int<B> * Int<B> ListB) =
+  match l with
+  | NilB => (0, NilB)
+  | ConsB (v, l) =>
+    let (len, l') = length l in
+    (1 + len, ConsB (v, l'))
+  end;;
+
+arrayToListBHelper arr0 i m : Int<B> Array -o Int<B> -o Int<B> -o (Int<B> Up<A> Down<B> ListB * Int<B> Array) =
+  let (i0, i1) = dupInt i in
+  let (m0, m1) = dupInt m in
+  if i0 <= m0
+  then 
+    let (i2, i3) = dupInt i1 in
+    let (v, arr1) = readB (susp Int<B>) i2 arr0 in
+    let (v', arr2) = arrayToListBHelper arr1 (i3 + 1) m1 in
+    (ConsB (v, v'), arr2)
+  else
+    let OneB = discardInt i1 in
+    let OneB = discardInt m1 in
+    (NilB, arr0);;
+
+arrayToListB arr0 : Int<B> Array -o Int<B> -o (Int<B> Up<A> Down<B> ListB * Int<B> Array) = arrayToListBHelper arr0 0;;
+
+fillArrayHelper i l arr0 : Int<B> -o Int<B> ListB -o Int<B> Array -o Int<B> Array =
+  match l with
+  | NilB =>
+    let OneB = discardInt i in
+    arr0
+  | ConsB (v, l) =>
+    let (i0, i1) = dupInt i in
+    let arr1 = writeB (susp Int<B>) i0 (liftInt v) arr0 in
+    fillArrayHelper (i1 + 1) l arr1
+  end;;
+
+fillArray l arr0 : Int<B> ListB -o Int<B> Array -o Int<B> Array =
+  fillArrayHelper 0 l arr0;;
+
+quickSortListB l : Int<B> ListB -o Int<B> ListB =
+  let (len, l') = length l in
+  let (len0, len1) = dupInt len in
+  load lA =
+    withAllocB (susp Int<B>) (susp (Int<B> ListB)) len0 (alloc (susp 0))
+      (fun arr0 ->
+        let arr1 = fillArray l' arr0 in
+        let arr2 = quickSort arr1 (alloc 0) (alloc 4) in
+        let (l'', arr3) = arrayToListB arr2 (len1 - 1) in
+        (arr3, liftListB (susp Int<B>) l''))
+  in
+  force lA;;
+
+exampleListB : Int<B> ListB = (ConsB (7, ConsB (2, (ConsB (5, ConsB (3, ConsB (6, NilB)))))));;
+
+data a ListA<A> = NilA | ConsA of a * a ListA;;
+
+convertToList l : Int<B> ListB -o Int<A> ListA Down<B> =
+  match l with
+  | NilB => alloc NilA
+  | ConsB (v, l) =>
+    load vA = convertTo v in
+    load lA = convertToList l in
+    alloc (ConsA (vA, lA))
+  end;;
+
+convertFromList l : Int<A> ListA Down<B> -o Int<B> ListB =
+  load lA = l in
+  match lA with
+  | NilA => NilB
+  | ConsA (vA, lA) => ConsB (convertFrom (alloc vA), convertFromList (alloc lA))
+  end;;
+
+quickSortCode a l f : (a : Type<A>) -> Int<A> ListA -o (Int<A> ListA -o a) -o a Down<B> Up<A> =
+  susp (load l = convertToList (quickSortListB (convertFromList (alloc l))) in alloc(f l));;
+
+exampleListA : Int<A> ListA = (ConsA (7, ConsA (2, (ConsA (5, ConsA (3, ConsA (6, NilA)))))));;
+
+sum l : Int<A> ListA -o Int<A> =
+  match l with
+  | NilA => 0
+  | ConsA (v, l) => v + sum l
+  end;;
+
+headA l : Int<A> ListA -o Int<A> =
+  match l with
+  | ConsA (v, l) => v
+  end;;
+
+exampleCall : Int<A> Down<B> = force (quickSortCode Int<A> exampleListA headA);;
