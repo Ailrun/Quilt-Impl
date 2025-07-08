@@ -31,7 +31,7 @@ readEitherCompleteCommand :: (ElModeSpec m) => FilePath -> Text -> Either String
 readEitherCompleteCommand = runCompleteParser parseCommand
 
 runCompleteParser :: ElParser a -> FilePath -> Text -> Either String a
-runCompleteParser p fp = first errorBundlePretty . parse (between (hidden MPC.space) eof p) fp
+runCompleteParser p fp = first errorBundlePretty . parse (between space eof p) fp
 
 parseCommand :: (ElModeSpec m) => ElParser (ElCommand m)
 parseCommand = ComTop <$> try parseTop <|> ComTerm <$> parseTerm
@@ -504,7 +504,10 @@ restIdChar :: ElParser Char
 restIdChar = MPC.alphaNumChar <|> oneOf ("_'" :: String) <?> "identifier character"
 
 lexeme :: ElParser a -> ElParser a
-lexeme p = p <* hidden MPC.space
+lexeme p = p <* space
+
+space :: ElParser ()
+space = hidden (MPCL.space MPC.space1 (MPCL.skipLineComment "--") (MPCL.skipBlockCommentNested "{-" "-}"))
 
 withCondition :: (a -> Bool) -> (a -> String) -> ElParser a -> ElParser a
 withCondition cond mkMsg p = do

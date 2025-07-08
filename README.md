@@ -23,7 +23,8 @@ cabal update
   - `<accessibility spec>`
     Determines which accessibility spec one wants to use.
     Currently we have the following built-in specs:
-    - ThreeModes
+    - ModesABC
+    - ModesAAB
     - TwoIntModes
     - TwoModes
 
@@ -36,13 +37,16 @@ cabal update
 
 ### Example Modes
 We provide the following example modes
-- `ThreeModes`  
-  An accessibility spec with one unrestricted mode `A` and two linear modes `B` and `C` where `A > B, C`, `B >= C`, and `C >= B`.
+- `ModesABC`  
+  An accessibility spec with one unrestricted mode `A` and two linear modes `B` and `C` where `A >= B`, `A >= C`, `B >= C`, and `C >= B`.
+  Linear mutable arrays are available for `B` and `C`.
+- `ModesAAB`  
+  An accessibility spec with three unrestricted modes `A`, `A'`, and `B` where `A >= B` and `A' >= B`
   Linear mutable arrays are available for `B` and `C`.
 - `TwoIntModes`  
-  An accessibility spec with two unrestricted modes `A` and `B` where `A > B`.
+  An accessibility spec with two unrestricted modes `A` and `B` where `A >= B`.
 - `TwoModes`  
-  An accessibility spec with one unrestricted mode `A` and one linear mode `B` where `A > B`.
+  An accessibility spec with one unrestricted mode `A` and one linear mode `B` where `A >= B`.
   Linear mutable arrays are available for `B`.
   
 ### Examples

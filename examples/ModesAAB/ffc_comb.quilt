@@ -1,0 +1,72 @@
+-- A mocked solver1
+solver1 x : Int<A> -o Int<A> = x * x;;
+
+-- A mocked solver2
+solver2 x : Int<A'> -o Int<A'> = x + x;;
+
+-- Foreign Function Call helper for A
+convertToA n : Int<B> -o Int<A> Down<B> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertToA (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFromA n : Int<A> Down<B> -o Int<B> =
+  load nA_ = n in
+  match nA_ with
+  | 0 => 0
+  | nA_ =>
+     1 + convertFromA (alloc (nA_ - 1))
+  end;;
+
+foreignFunCallA f n : (Int<A> -o Int<A>) Down<B> -o Int<B> -o Int<B> =
+  load nA_ = convertToA n in
+  load f_ = f in
+  convertFromA (alloc (f_ nA_));;
+
+-- Foreign Function Call helper for A'
+convertToA' n : Int<B> -o Int<A'> Down<B> =
+  match n with
+  | 0 => alloc 0
+  | n =>
+    load nA_ = convertToA' (n - 1) in
+    alloc (1 + nA_)
+  end;;
+
+convertFromA' n : Int<A'> Down<B> -o Int<B> =
+  load nA_ = n in
+  match nA_ with
+  | 0 => 0
+  | nA_ =>
+     1 + convertFromA' (alloc (nA_ - 1))
+  end;;
+
+foreignFunCallA' f n : (Int<A'> -o Int<A'>) Down<B> -o Int<B> -o Int<B> =
+  load nA_ = convertToA' n in
+  load f_ = f in
+  convertFromA' (alloc (f_ nA_));;
+
+
+data a Option<B> = None | Some of a;;
+data ProblemFrag<B> = Frag1 | Frag2;;
+
+-- A mocked fragment decision
+decideFrag n : Int<B> -o ProblemFrag Option =
+  if n < 5
+  then Some Frag1
+  else
+  if n > 10
+  then Some Frag2
+  else None;;
+
+unionSolver n : Int<B> -o Int<B> Option =
+  match decideFrag n with
+  | Some frag =>
+    match frag with
+    | Frag1 => Some (foreignFunCallA (alloc(solver1)) n)
+    | Frag2 => Some (foreignFunCallA' (alloc(solver2)) n)
+    end
+  | None => None
+  end;;

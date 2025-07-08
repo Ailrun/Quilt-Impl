@@ -1,5 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
-module Quilt.ExampleModes.ThreeModes where
+module Quilt.ExampleModes.ThreeModesABC where
 
 import Data.Hashable
 import Data.Proxy     (Proxy (Proxy))
@@ -7,13 +7,13 @@ import GHC.Generics
 
 import Quilt.ModeSpec
 
-data ThreeModes = MA | MB | MC
+data ThreeModesABC = MA | MB | MC
   deriving (Eq, Show, Generic, Hashable)
 
-threeModesProxy :: Proxy ThreeModes
-threeModesProxy = Proxy
+threeModesABCProxy :: Proxy ThreeModesABC
+threeModesABCProxy = Proxy
 
-instance ElModeSpec ThreeModes where
+instance ElModeSpec ThreeModesABC where
   showMode MA = "A"
   showMode MB = "B"
   showMode MC = "C"

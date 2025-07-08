@@ -3,7 +3,8 @@ module Main where
 import Data.Maybe                       (maybeToList)
 import System.Environment               (getArgs)
 
-import Quilt.ExampleModes.ThreeModes
+import Quilt.ExampleModes.ThreeModesAAB
+import Quilt.ExampleModes.ThreeModesABC
 import Quilt.ExampleModes.TwoIntModes
 import Quilt.ExampleModes.TwoModes
 import Quilt.Top
@@ -21,7 +22,8 @@ main = do
   where
     execute _          (Just "--help") = usage Nothing
     execute "--help"   _ = usage Nothing
-    execute "ThreeModes" mayFp = runElTopM $ interpreterWithMayFile threeModesProxy mayFp defaultOptions
+    execute "ModesABC" mayFp = runElTopM $ interpreterWithMayFile threeModesABCProxy mayFp defaultOptions
+    execute "ModesAAB" mayFp = runElTopM $ interpreterWithMayFile threeModesAABProxy mayFp defaultOptions
     execute "TwoIntModes" mayFp = runElTopM $ interpreterWithMayFile twoIntModesProxy mayFp defaultOptions
     execute "TwoModes" mayFp = runElTopM $ interpreterWithMayFile twoModesProxy mayFp defaultOptions
     execute _ _ = usage $ Just "Invalid mode spec"
@@ -44,7 +46,8 @@ usage err =
     , "  <accessibility spec>"
     , "    Determines which accessibility spec one wants to use."
     , "    Currently we have the following built-in specs:"
-    , "    - ThreeModes"
+    , "    - ModesABC"
+    , "    - ModesAAB"
     , "    - TwoIntModes"
     , "    - TwoModes"
     , "    To use other specs, one can use the code base of this executable as a library"
