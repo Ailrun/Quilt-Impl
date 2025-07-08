@@ -198,20 +198,14 @@ convertFromList l : Int<A> ListA Down<B> -o Int<B> ListB =
   | ConsA (vA, lA) => ConsB (convertFrom (alloc vA), convertFromList (alloc lA))
   end;;
 
-quickSortCode a l f : (a : Type<A>) -> Int<A> ListA -o (Int<A> ListA -o a) -o a Down<B> Up<A> =
-  susp (load l = convertToList (quickSortListB (convertFromList (alloc l))) in alloc(f l));;
+quickSortCode a l cb : (a : Type<A>) -> Int<A> ListA -o (Int<A> ListA -o a) -o a Down<B> Up<A> =
+  susp (load x = convertToList (quickSortListB (convertFromList (alloc l))) in alloc(cb x));;
 
 exampleListA : Int<A> ListA = (ConsA (7, ConsA (2, (ConsA (5, ConsA (3, ConsA (6, NilA)))))));;
-
-sum l : Int<A> ListA -o Int<A> =
-  match l with
-  | NilA => 0
-  | ConsA (v, l) => v + sum l
-  end;;
 
 headA l : Int<A> ListA -o Int<A> =
   match l with
   | ConsA (v, l) => v
   end;;
 
-exampleCall : Int<A> Down<B> = force (quickSortCode Int<A> exampleListA headA);;
+callbackWithMinimum : Int<A> Down<B> Up<A> = quickSortCode Int<A> exampleListA headA;;
