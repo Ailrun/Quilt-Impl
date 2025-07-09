@@ -13,7 +13,7 @@ data InfoFlowModes = MCode | MProg | MSecure
 infoFlowModesProxy :: Proxy InfoFlowModes
 infoFlowModesProxy = Proxy
 
-instance ElModeSpec InfoFlowModes where
+instance QModeSpec InfoFlowModes where
   showMode MCode   = "C"
   showMode MProg   = "P"
   showMode MSecure = "S"
@@ -23,11 +23,9 @@ instance ElModeSpec InfoFlowModes where
   readModeEither "S" = Right MSecure
   readModeEither _   = Left "Should be either <C>, <P>, or <S>"
 
-  MProg   <=!! MCode = True
-  MSecure <=!! MCode = True
-  MSecure <=!! MProg = True
-  m       <=!! n     = m == n
+  MCode >=!! MProg   = True
+  MCode >=!! MSecure = True
+  MProg >=!! MSecure = True
+  m     >=!! n       = m == n
 
-  modeSig _  _ = True
-
-  modeEff _ = Nothing
+  modeSig _ _ = True

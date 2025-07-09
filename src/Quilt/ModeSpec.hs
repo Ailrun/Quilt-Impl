@@ -1,38 +1,49 @@
 {-# LANGUAGE DerivingVia #-}
 module Quilt.ModeSpec
-  ( ElMdSt(..)
+  ( QMdSt(..)
 
-  , ElModeSpec(..)
+  , QModeSpec(..)
   , (<!!)
-  , (>=!!)
   , (>!!)
   ) where
 
 import Data.Hashable (Hashable)
 
-data ElMdSt
+data QMdSt
   = MdStWk
   | MdStCo
   deriving (Eq, Show)
 
-class (Show m, Hashable m) => ElModeSpec m where
+class (Show m, Hashable m) => QModeSpec m where
   -- Helper for error message
   showMode :: m -> String
   -- Helper for parser
   readModeEither :: String -> Either String m
-  -- Main specification
-  (<=!!) :: m -> m -> Bool
-  modeSig :: m -> ElMdSt -> Bool
-  modeEff :: m -> Maybe m
 
-(<!!) :: (ElModeSpec m) => m -> m -> Bool
+  -- Accessibility relation
+  -- You can define either of them.
+  (<=!!) :: m -> m -> Bool
+  (<=!!) = flip (>=!!)
+  {-# INLINE (<=!!) #-}
+
+  (>=!!) :: m -> m -> Bool
+  (>=!!) = flip (<=!!)
+  {-# INLINE (>=!!) #-}
+
+  modeSig :: m -> QMdSt -> Bool
+
+  -- Mutability in the input mode
+  -- is possible only if there is
+  -- an unrestricted output mode.
+  modeEff :: m -> Maybe m
+  modeEff _ = Nothing
+
+  {-# MINIMAL showMode,readModeEither,((<=!!) | (>=!!)),modeSig #-}
+
+(<!!) :: (QModeSpec m) => m -> m -> Bool
 x <!! y = not (y <=!! x) && x <=!! y
 {-# INLINE (<!!) #-}
 
-(>=!!) :: (ElModeSpec m) => m -> m -> Bool
-x >=!! y = y <=!! x
-{-# INLINE (>=!!) #-}
-
-(>!!) :: (ElModeSpec m) => m -> m -> Bool
+(>!!) :: (QModeSpec m) => m -> m -> Bool
 x >!! y = y <!! x
 {-# INLINE (>!!) #-}

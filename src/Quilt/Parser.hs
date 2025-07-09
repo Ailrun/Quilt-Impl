@@ -22,37 +22,37 @@ import Text.Megaparsec.Char.Lexer         qualified as MPCL
 import Quilt.ModeSpec
 import Quilt.Syntax
 
-type ElParser = Parsec Void Text
+type QParser = Parsec Void Text
 
-readEitherCompleteFile :: (ElModeSpec m) => FilePath -> Text -> Either String (ElModule m)
+readEitherCompleteFile :: (QModeSpec m) => FilePath -> Text -> Either String (QModule m)
 readEitherCompleteFile = runCompleteParser parseModule
 
-readEitherCompleteCommand :: (ElModeSpec m) => FilePath -> Text -> Either String (ElCommand m)
+readEitherCompleteCommand :: (QModeSpec m) => FilePath -> Text -> Either String (QCommand m)
 readEitherCompleteCommand = runCompleteParser parseCommand
 
-runCompleteParser :: ElParser a -> FilePath -> Text -> Either String a
+runCompleteParser :: QParser a -> FilePath -> Text -> Either String a
 runCompleteParser p fp = first errorBundlePretty . parse (between space eof p) fp
 
-parseCommand :: (ElModeSpec m) => ElParser (ElCommand m)
+parseCommand :: (QModeSpec m) => QParser (QCommand m)
 parseCommand = ComTop <$> try parseTop <|> ComTerm <$> parseTerm
 
-parseModule :: (ElModeSpec m) => ElParser (ElModule m)
-parseModule = liftA2 ElModule (many parseImport) (many parseTop)
+parseModule :: (QModeSpec m) => QParser (QModule m)
+parseModule = liftA2 QModule (many parseImport) (many parseTop)
 
-parseImport :: ElParser ElModuleId
+parseImport :: QParser QModuleId
 parseImport = do
   keyword "require"
   modId <- parseModuleId
   toplevelDelimiter
   pure modId
 
-parseModuleId :: ElParser ElModuleId
-parseModuleId = ElModuleId <$> sepBy1 parseUpperId (symbol "/")
+parseModuleId :: QParser QModuleId
+parseModuleId = QModuleId <$> sepBy1 parseUpperId (symbol "/")
 
-parseTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTop :: (QModeSpec m) => QParser (QTop m)
 parseTop = parseTyDefTop <|> parseTmDefTop
 
-parseTyDefTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTyDefTop :: (QModeSpec m) => QParser (QTop m)
 parseTyDefTop = impl <?> "top-level type definition"
   where
     impl = do
@@ -77,7 +77,7 @@ parseTyDefTop = impl <?> "top-level type definition"
         parseLowerId
         (symbol ":" *> parseKind)
 
-parseTmDefTop :: (ElModeSpec m) => ElParser (ElTop m)
+parseTmDefTop :: (QModeSpec m) => QParser (QTop m)
 parseTmDefTop = do
   x <- parseLowerId <?> "identifier for term definition"
   ps <- many parseAtomicPattern
@@ -88,7 +88,7 @@ parseTmDefTop = do
   toplevelDelimiter
   pure . TopTermDef x ty $ foldr (`TmAmbiLam` Nothing) t ps
 
-parseTyDefCons :: (ElModeSpec m) => ElParser (ElId, [ElType m])
+parseTyDefCons :: (QModeSpec m) => QParser (QId, [QType m])
 parseTyDefCons =
   liftA2
     (,)
@@ -96,7 +96,7 @@ parseTyDefCons =
     (option [] (keyword "of" *> sepBy1 parseAppLikeType (symbol "*" <?> "more term constructor argument types separated by \"*\"")))
   <?> "type constructor definition"
 
-parseTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseTerm :: (QModeSpec m) => QParser (QTerm m)
 parseTerm = parseOptAnn id TmAnn impl (symbol ":" *> parseType <?> "type annotation") <?> "term"
   where
     impl =
@@ -109,7 +109,7 @@ parseTerm = parseOptAnn id TmAnn impl (symbol ":" *> parseType <?> "type annotat
         , parseBinOpTerm
         ]
 
-parseLamTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseLamTerm :: (QModeSpec m) => QParser (QTerm m)
 parseLamTerm = do
   keyword "fun"
   ps <- some parseParam
@@ -117,12 +117,12 @@ parseLamTerm = do
   t <- parseTerm
   pure $ foldr ($) t ps
   where
-    parseParam :: (ElModeSpec m) => ElParser (ElTerm m -> ElTerm m)
+    parseParam :: (QModeSpec m) => QParser (QTerm m -> QTerm m)
     parseParam =
       parened (liftA2 TmAmbiLam parsePattern (optional (symbol ":" *> parseContextEntry)))
       <|> flip TmAmbiLam Nothing <$> parseAtomicPattern
 
-parseMatchTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseMatchTerm :: (QModeSpec m) => QParser (QTerm m)
 parseMatchTerm = do
   keyword "match"
   t <- parseTerm
@@ -132,14 +132,14 @@ parseMatchTerm = do
   keyword "end"
   pure $ TmMatch t mayTy bs
 
-parseBranch :: (ElModeSpec m) => ElParser (ElBranch m)
+parseBranch :: (QModeSpec m) => QParser (QBranch m)
 parseBranch =
   liftA2
     (,)
     parsePattern
     (symbol "=>" *> parseTerm)
 
-parsePattern :: (ElModeSpec m) => ElParser (ElPattern m)
+parsePattern :: (QModeSpec m) => QParser (QPattern m)
 parsePattern =
   choice
     [ keyword "load" $> PatLoad <*> parseAtomicPattern
@@ -152,7 +152,7 @@ parsePattern =
       pure <$> parseUnitPattern
       <|> NE.toList <$> parseTupleLikePattern
 
-parseAtomicPattern :: (ElModeSpec m) => ElParser (ElPattern m)
+parseAtomicPattern :: (QModeSpec m) => QParser (QPattern m)
 parseAtomicPattern =
   parseUnitPattern
   <|> wrapTupleLike <$> parseTupleLikePattern
@@ -160,10 +160,10 @@ parseAtomicPattern =
     wrapTupleLike (pat :| []) = pat
     wrapTupleLike pats        = PatTuple (NE.toList pats)
 
-parseTupleLikePattern :: (ElModeSpec m) => ElParser (NonEmpty (ElPattern m))
+parseTupleLikePattern :: (QModeSpec m) => QParser (NonEmpty (QPattern m))
 parseTupleLikePattern = parened (CMCNE.sepBy1 parsePattern (symbol ","))
 
-parseUnitPattern :: (ElModeSpec m) => ElParser (ElPattern m)
+parseUnitPattern :: (QModeSpec m) => QParser (QPattern m)
 parseUnitPattern =
   choice
     [ PatInt <$> lexeme MPCL.decimal
@@ -174,7 +174,7 @@ parseUnitPattern =
     , symbol "_" $> PatWild
     ]
 
-parseLetTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseLetTerm :: (QModeSpec m) => QParser (QTerm m)
 parseLetTerm = do
   keyword "let"
   pat <- parsePattern
@@ -185,7 +185,7 @@ parseLetTerm = do
   t1 <- parseTerm
   pure $ TmMatch t0 mayTy [(pat, t1)]
 
-parseLoadTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseLoadTerm :: (QModeSpec m) => QParser (QTerm m)
 parseLoadTerm = do
   keyword "load"
   pat <- parsePattern
@@ -196,7 +196,7 @@ parseLoadTerm = do
   t1 <- parseTerm
   pure $ TmMatch t0 mayTy [(PatLoad pat, t1)]
 
-parseIteTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseIteTerm :: (QModeSpec m) => QParser (QTerm m)
 parseIteTerm = do
   keyword "if"
   t <- parseTerm
@@ -205,7 +205,7 @@ parseIteTerm = do
   keyword "else"
   TmIte t t0 <$> parseTerm
 
-parseBinOpTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseBinOpTerm :: (QModeSpec m) => QParser (QTerm m)
 parseBinOpTerm = CMCE.makeExprParser parseApplikeTerm table
   where
     table =
@@ -225,10 +225,10 @@ parseBinOpTerm = CMCE.makeExprParser parseApplikeTerm table
         ]
       ]
 
-parseApplikeTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseApplikeTerm :: (QModeSpec m) => QParser (QTerm m)
 parseApplikeTerm = parseShiftTerm <|> try parseDataTerm <|> parseAppTerm
 
-parseShiftTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseShiftTerm :: (QModeSpec m) => QParser (QTerm m)
 parseShiftTerm =
   choice
     [ parseSuspCommon TmSusp parseAtomicTerm parseTerm
@@ -236,17 +236,17 @@ parseShiftTerm =
     , keyword "alloc" $> TmStore <*> parseAtomicTerm
     ]
 
-parseDataTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseDataTerm :: (QModeSpec m) => QParser (QTerm m)
 parseDataTerm = liftA2 TmData parseUpperId parseDataArgTerms
   where
     parseDataArgTerms =
       pure <$> parseUnitTerm
       <|> NE.toList <$> parseTupleLikeTerm
 
-parseAppTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseAppTerm :: (QModeSpec m) => QParser (QTerm m)
 parseAppTerm = liftA2 (Data.List.foldl' TmAmbiApp) parseAtomicTerm (many parseAtomicAmbi)
 
-parseAtomicTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseAtomicTerm :: (QModeSpec m) => QParser (QTerm m)
 parseAtomicTerm =
   parseUnitTerm
   <|> wrapTupleLike <$> parseTupleLikeTerm
@@ -255,10 +255,10 @@ parseAtomicTerm =
     wrapTupleLike (t :| []) = t
     wrapTupleLike ts        = TmTuple (NE.toList ts)
 
-parseTupleLikeTerm :: (ElModeSpec m) => ElParser (NonEmpty (ElTerm m))
+parseTupleLikeTerm :: (QModeSpec m) => QParser (NonEmpty (QTerm m))
 parseTupleLikeTerm = parened (CMCNE.sepBy1 parseTerm (symbol ","))
 
-parseUnitTerm :: (ElModeSpec m) => ElParser (ElTerm m)
+parseUnitTerm :: (QModeSpec m) => QParser (QTerm m)
 parseUnitTerm =
   choice
     [ TmInt <$> lexeme MPCL.decimal
@@ -272,7 +272,7 @@ parseUnitTerm =
       | Just bi <- toBuiltIn x = TmBuiltIn bi
       | otherwise              = TmVar x
 
-parseAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
+parseAmbi :: (QModeSpec m) => QParser (QAmbi m)
 parseAmbi =
   choice
     [ try (AmCore <$> hidden parseAmbiCore)
@@ -280,7 +280,7 @@ parseAmbi =
     , AmTerm <$> parseTerm
     ]
 
-parseAtomicAmbi :: (ElModeSpec m) => ElParser (ElAmbi m)
+parseAtomicAmbi :: (QModeSpec m) => QParser (QAmbi m)
 parseAtomicAmbi =
   choice
     [ try (AmCore <$> hidden parseAtomicAmbiCore)
@@ -288,7 +288,7 @@ parseAtomicAmbi =
     , AmTerm <$> parseAtomicTerm
     ]
 
-parseAmbiCore :: (ElModeSpec m) => ElParser (ElAmbiCore m)
+parseAmbiCore :: (QModeSpec m) => QParser (QAmbiCore m)
 parseAmbiCore =
   choice
     [ parseSuspCommon AmSusp parseAtomicAmbiCore parseAmbiCore
@@ -296,13 +296,13 @@ parseAmbiCore =
     , parseAtomicAmbiCore
     ]
 
-parseAtomicAmbiCore :: (ElModeSpec m) => ElParser (ElAmbiCore m)
+parseAtomicAmbiCore :: (QModeSpec m) => QParser (QAmbiCore m)
 parseAtomicAmbiCore = AmVar <$> parseLowerId <|> parened parseAmbiCore
 
-parseKind :: (ElModeSpec m) => ElParser (ElKind m)
+parseKind :: (QModeSpec m) => QParser (QKind m)
 parseKind = liftA2 (foldr ($)) parseAtomicKind (many (keyword "Up" $> flip KiUp Seq.empty <*> parseMode)) <?> "kind"
 
-parseAtomicKind :: (ElModeSpec m) => ElParser (ElKind m)
+parseAtomicKind :: (QModeSpec m) => QParser (QKind m)
 parseAtomicKind =
   choice
     [ keyword "Type" $> KiType <*> parseMode <?> "kind \"Type\""
@@ -311,7 +311,7 @@ parseAtomicKind =
     ]
   <?> "kind"
 
-parseType :: (ElModeSpec m) => ElParser (ElType m)
+parseType :: (QModeSpec m) => QParser (QType m)
 parseType =
   parseOptAnn
     id
@@ -328,24 +328,24 @@ parseType =
       <|> TyArr <$> parseProdType
       <?> "argument type"
 
-parseProdType :: (ElModeSpec m) => ElParser (ElType m)
+parseProdType :: (QModeSpec m) => QParser (QType m)
 parseProdType = do
   neTys <- CMCNE.sepBy1 parseAppLikeType (symbol "*" <?> "one more product type item separated by \"*\"")
   case neTys of
     ty :| []  -> pure ty
     ty :| tys -> pure $ TyProd (ty:tys)
 
-parseAppLikeType :: (ElModeSpec m) => ElParser (ElType m)
+parseAppLikeType :: (QModeSpec m) => QParser (QType m)
 parseAppLikeType =
   parseDelayedType
   <|> parsePostType
 
-parseDelayedType :: (ElModeSpec m) => ElParser (ElType m)
+parseDelayedType :: (QModeSpec m) => QParser (QType m)
 parseDelayedType =
   parseSuspCommon TySusp parseAtomicType parseType
   <|> parseForceCommon TyForce parseAtomicType
 
-parsePostType :: (ElModeSpec m) => ElParser (ElType m)
+parsePostType :: (QModeSpec m) => QParser (QType m)
 parsePostType =
   liftA2 (foldl' (flip ($))) parseTupleArgDataType (many parsePostOp)
   where
@@ -357,20 +357,20 @@ parsePostType =
         , flip (TyData . pure) <$> parseUpperId <?> "type constructor"
         ]
 
-parseTupleArgDataType :: (ElModeSpec m) => ElParser (ElType m)
+parseTupleArgDataType :: (QModeSpec m) => QParser (QType m)
 parseTupleArgDataType = do
   neTys <- pure <$> parseUnitType <|> parened (CMCNE.sepBy1 parseType (symbol ","))
   case neTys of
     ty :| [] -> option ty (TyData [ty] <$> parseUpperId <?> "type constructor")
     _        -> TyData (NE.toList neTys) <$> parseUpperId <?> "type constructor"
 
-parseAtomicType :: (ElModeSpec m) => ElParser (ElType m)
+parseAtomicType :: (QModeSpec m) => QParser (QType m)
 parseAtomicType =
   parseUnitType
   <|> parened parseType
   <?> "type"
 
-parseUnitType :: (ElModeSpec m) => ElParser (ElType m)
+parseUnitType :: (QModeSpec m) => QParser (QType m)
 parseUnitType =
   choice
     [ keyword "Int" $> TyInt <*> parseMode
@@ -380,20 +380,20 @@ parseUnitType =
     , TyData [] <$> parseUpperId <?> "type constructor"
     ]
 
-parseContextualUpCommon :: (ElModeSpec m) => (m -> ElContext m -> f m -> f m) -> ElParser (f m) -> ElParser (f m)
+parseContextualUpCommon :: (QModeSpec m) => (m -> QContext m -> f m -> f m) -> QParser (f m) -> QParser (f m)
 parseContextualUpCommon cons p = bracketed parseContextualCommon <*> (keyword "Up" *> parseMode)
   where
     parseContextualCommon = liftA2 (curry (flip (uncurry . cons))) parseContext (symbol "|-" *> p)
 
-parseSuspCommon :: (ElModeSpec m) => (ElContextHat m -> f m -> f m) -> ElParser (f m) -> ElParser (f m) -> ElParser (f m)
+parseSuspCommon :: (QModeSpec m) => (QContextHat m -> f m -> f m) -> QParser (f m) -> QParser (f m) -> QParser (f m)
 parseSuspCommon cons ap p = keyword "susp" *> parseOpenItem
   where
     parseOpenItem = cons Seq.empty <$> try ap <|> parened (liftA2 cons parseContextHat (symbol "." *> p))
 
-parseForceCommon :: (ElModeSpec m) => (f m -> ElSubst m -> f m) -> ElParser (f m) -> ElParser (f m)
+parseForceCommon :: (QModeSpec m) => (f m -> QSubst m -> f m) -> QParser (f m) -> QParser (f m)
 parseForceCommon cons ap = keyword "force" *> liftA2 cons ap (option Empty (symbol "@" *> parseSubst))
 
-parseContext :: (ElModeSpec m) => ElParser (ElContext m)
+parseContext :: (QModeSpec m) => QParser (QContext m)
 parseContext = Seq.fromList <$> impl <?> "context"
   where
     impl =
@@ -402,25 +402,25 @@ parseContext = Seq.fromList <$> impl <?> "context"
 
     parseContextItem = liftA2 (,) parseLowerId (symbol ":" *> parseContextEntry)
 
-parseContextEntry :: (ElModeSpec m) => ElParser (ElContextEntry m)
+parseContextEntry :: (QModeSpec m) => QParser (QContextEntry m)
 parseContextEntry =
   try (CEKind <$> parseKind)
   <|> CEType <$> parseType
 
-parseContextHat :: ElParser (ElContextHat m)
+parseContextHat :: QParser (QContextHat m)
 parseContextHat = Seq.fromList <$> impl
   where
     impl =
       symbol "." *> many (symbol "," *> parseLowerId)
       <|> sepBy1 parseLowerId (symbol ",")
 
-parseSubst :: (ElModeSpec m) => ElParser (ElSubst m)
+parseSubst :: (QModeSpec m) => QParser (QSubst m)
 parseSubst = fmap Seq.fromList . parened $ sepBy (SEAmbi <$> parseAmbi) (symbol ",")
 
-parseOptAnn :: (a -> c) -> (a -> b -> c) -> ElParser a -> ElParser b -> ElParser c
+parseOptAnn :: (a -> c) -> (a -> b -> c) -> QParser a -> QParser b -> QParser c
 parseOptAnn f0 fAnn mainp annp = mainp <**> option f0 (flip fAnn <$> annp)
 
-parseMode :: (ElModeSpec m) => ElParser m
+parseMode :: (QModeSpec m) => QParser m
 parseMode = impl <?> "mode"
   where
     impl = do
@@ -429,17 +429,17 @@ parseMode = impl <?> "mode"
         Right m -> pure m
         Left  e -> fail ("invalid mode: " <> e)
 
-parseLowerId :: ElParser ElId
-parseLowerId = elId <$> lowerIdentifier
+parseLowerId :: QParser QId
+parseLowerId = qId <$> lowerIdentifier
 
-parseUpperId :: ElParser ElId
-parseUpperId = elId <$> upperIdentifier
+parseUpperId :: QParser QId
+parseUpperId = qId <$> upperIdentifier
 
 ------------------------------------------------------------
 -- lexer-like combinators
 ------------------------------------------------------------
 
-toplevelDelimiter :: ElParser ()
+toplevelDelimiter :: QParser ()
 toplevelDelimiter = symbol ";;" <?> "top-level delimiter \";;\""
 
 keywords :: [Text]
@@ -470,46 +470,46 @@ keywords =
   , "require"
   ]
 
-parened :: ElParser a -> ElParser a
+parened :: QParser a -> QParser a
 parened = between (symbol "(") (symbol ")")
 
-bracketed :: ElParser a -> ElParser a
+bracketed :: QParser a -> QParser a
 bracketed = between (symbol "[") (symbol "]")
 
-angled :: ElParser a -> ElParser a
+angled :: QParser a -> QParser a
 angled = between (symbol "<") (symbol ">")
 
-symbol :: Text -> ElParser ()
+symbol :: Text -> QParser ()
 symbol txt = void (lexeme (MPC.string txt)) <?> ("symbol " <> show txt)
 
-keyword :: Text -> ElParser ()
+keyword :: Text -> QParser ()
 keyword txt
   | txt `elem` keywords = lexeme (try $ MPC.string txt *> notFollowedBy restIdChar) <?> ("keyword " <> show txt)
   | otherwise           = error $ "Parser bug: unknown keyword " <> show txt
 
-lowerIdentifier :: ElParser Text
+lowerIdentifier :: QParser Text
 lowerIdentifier = identifierOf MPC.lowerChar <?> "identifier starting with a lower-case letter"
 
-upperIdentifier :: ElParser Text
+upperIdentifier :: QParser Text
 upperIdentifier = identifierOf MPC.upperChar <?> "identifier starting with an upper-case letter"
 
-identifierOf :: ElParser Char -> ElParser Text
+identifierOf :: QParser Char -> QParser Text
 identifierOf firstChar = identifierImpl
   where
-    identifierImpl :: ElParser Text
+    identifierImpl :: QParser Text
     identifierImpl = try . withCondition (`notElem` keywords) ((<> "") . show) $
       lexeme ((T.pack .). (:) <$> firstChar <*> many restIdChar)
 
-restIdChar :: ElParser Char
+restIdChar :: QParser Char
 restIdChar = MPC.alphaNumChar <|> oneOf ("_'" :: String) <?> "identifier character"
 
-lexeme :: ElParser a -> ElParser a
+lexeme :: QParser a -> QParser a
 lexeme p = p <* space
 
-space :: ElParser ()
+space :: QParser ()
 space = hidden (MPCL.space MPC.space1 (MPCL.skipLineComment "--") (MPCL.skipBlockCommentNested "{-" "-}"))
 
-withCondition :: (a -> Bool) -> (a -> String) -> ElParser a -> ElParser a
+withCondition :: (a -> Bool) -> (a -> String) -> QParser a -> QParser a
 withCondition cond mkMsg p = do
   o <- getOffset
   r <- p
@@ -517,8 +517,8 @@ withCondition cond mkMsg p = do
   then return r
   else region (setErrorOffset o) (fail (mkMsg r))
 
-sepStartBy :: ElParser a -> ElParser sep -> ElParser [a]
+sepStartBy :: QParser a -> QParser sep -> QParser [a]
 sepStartBy p sep = option [] (sepStartBy1 p sep)
 
-sepStartBy1 :: ElParser a -> ElParser sep -> ElParser [a]
+sepStartBy1 :: QParser a -> QParser sep -> QParser [a]
 sepStartBy1 p sep = optional sep *> sepBy1 p sep

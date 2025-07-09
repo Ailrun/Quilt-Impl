@@ -22,40 +22,40 @@ import Quilt.PrettyPrinter
 import Quilt.Syntax
 import Quilt.TypeChecker
 
-type ElTopM = StateT Integer IO
+type QTopM = StateT Integer IO
 
-data ElTopErr m = TypeError (ElTypingError m) | EvalError (ElEvalError m)
+data QTopErr m = TypeError (QTypingError m) | EvalError (QEvalError m)
   deriving (Show)
 
-data ElTopOptions
-  = ElTopOptions
+data QTopOptions
+  = QTopOptions
     { optionShowType :: Bool
     , optionShowMode :: Bool
     , optionShowEnv  :: Bool
     }
 
-runElTopM :: ElTopM a -> IO a
-runElTopM = flip evalStateT 0
+runQTopM :: QTopM a -> IO a
+runQTopM = flip evalStateT 0
 
-interpreterWithMayFile :: (ElModeSpec m) => Proxy m -> Maybe FilePath -> ElTopOptions -> ElTopM ()
+interpreterWithMayFile :: (QModeSpec m) => Proxy m -> Maybe FilePath -> QTopOptions -> QTopM ()
 interpreterWithMayFile proxy Nothing   = interpreter proxy
 interpreterWithMayFile proxy (Just fp) = interpreterWithFile proxy fp
 
-interpreter :: (ElModeSpec m) => Proxy m -> ElTopOptions -> ElTopM ()
-interpreter (_ :: Proxy m) opt = interpreterLoop opt 0 (ElIModule [] [] :: ElIModule m)
+interpreter :: (QModeSpec m) => Proxy m -> QTopOptions -> QTopM ()
+interpreter (_ :: Proxy m) opt = interpreterLoop opt 0 (QIModule [] [] :: QIModule m)
 
-interpreterWithFile :: (ElModeSpec m) => Proxy m -> FilePath -> ElTopOptions -> ElTopM ()
+interpreterWithFile :: (QModeSpec m) => Proxy m -> FilePath -> QTopOptions -> QTopM ()
 interpreterWithFile (_ :: Proxy m) fp opt = do
   txt <- lift $ T.readFile fp
   case readEitherCompleteFile fp txt of
-    Right (premodu :: ElModule m) -> do
-      checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ checkModule premodu
+    Right (premodu :: QModule m) -> do
+      checkRes <- mapStateT (pure . runIdentity) $ fullRunQCheckM $ checkModule premodu
       flippedEither checkRes handleModuleCheckingError $ interpreterLoop opt 0
     Left err -> lift $ putStrLn $ "ParseError <" <> fp <> ">:\n\n" <> unlines (("  " <>) <$> lines err)
   where
     handleModuleCheckingError te = lift $ putStrLn $ showPrettyError 80 Nothing te
 
-interpreterLoop :: (ElModeSpec m) => ElTopOptions -> Integer -> ElIModule m -> ElTopM ()
+interpreterLoop :: (QModeSpec m) => QTopOptions -> Integer -> QIModule m -> QTopM ()
 interpreterLoop opt n modu = do
   lift $ forcePutStr "> "
   l <- lift $ catch getMultiLine ioExceptionHandler
@@ -91,21 +91,21 @@ interpreterLoop opt n modu = do
       else print e
       exitFailure
 
-fullCommandRun :: (ElModeSpec m) => ElTopOptions -> ElIModule m -> Integer -> ElCommand m -> ElTopM (Either (ElTopErr m) (ElIModule m))
+fullCommandRun :: (QModeSpec m) => QTopOptions -> QIModule m -> Integer -> QCommand m -> QTopM (Either (QTopErr m) (QIModule m))
 fullCommandRun _   modu _n (ComTop top) = do
-  checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ checkTopUnderModule modu top
+  checkRes <- mapStateT (pure . runIdentity) $ fullRunQCheckM $ checkTopUnderModule modu top
   flippedEither checkRes (pure . Left . TypeError) $ \modu' -> lift $ do
     putStrLn $ showPretty 80 top
     pure (Right modu')
 fullCommandRun opt modu _n (ComTerm t) = do
-  checkRes <- mapStateT (pure . runIdentity) $ fullRunElCheckM $ inferTypeUnderModule modu t
+  checkRes <- mapStateT (pure . runIdentity) $ fullRunQCheckM $ inferTypeUnderModule modu t
   flippedEither checkRes (pure . Left . TypeError) $ \(it, ity, k) -> do
     when (optionShowType opt) $ do
       lift $ putStrLn "------ type checking result ------"
       lift $ putStrLn $ showPretty 80 (TmAnn (fromInternal it) (fromInternal ity))
     when (optionShowMode opt) $ do
       lift $ putStrLn $ "------ of mode " <> showPrettyMode 80 k <> " ------"
-    evalRes <- mapStateT (pure . runIdentity) $ fullRunElEvalM $ evalUnderModule modu it
+    evalRes <- mapStateT (pure . runIdentity) $ fullRunQEvalM $ evalUnderModule modu it
     flippedEither evalRes (pure . Left . EvalError) $ \(it', (env, _)) -> lift $ do
       putStrLn "------ evaluation result ------"
       putStrLn $ showPretty 80 it'

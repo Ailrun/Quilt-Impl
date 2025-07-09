@@ -13,7 +13,7 @@ data ThreeModesAAB = MA | MA' | MB
 threeModesAABProxy :: Proxy ThreeModesAAB
 threeModesAABProxy = Proxy
 
-instance ElModeSpec ThreeModesAAB where
+instance QModeSpec ThreeModesAAB where
   showMode MA  = "A"
   showMode MA' = "A'"
   showMode MB  = "B"
@@ -23,10 +23,8 @@ instance ElModeSpec ThreeModesAAB where
   readModeEither "B"  = Right MB
   readModeEither _    = Left "Should be either <A>, <A'>, or <B>"
 
-  MB <=!! MA  = True
-  MB <=!! MA' = True
-  m  <=!! n   = m == n
+  MA  >=!! MB = True
+  MA' >=!! MB = True
+  m   >=!! n  = m == n
 
   modeSig _ _ = True
-
-  modeEff _  = Nothing

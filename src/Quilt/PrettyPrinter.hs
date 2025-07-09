@@ -11,15 +11,15 @@ import Prettyprinter.Render.String (renderString)
 import Data.Foldable               (Foldable (toList))
 import Data.HashMap.Strict         qualified as HashMap
 
-import Quilt.Evaluator             (ElEnv (..), ElEvalError (..))
+import Quilt.Evaluator             (QEnv (..), QEvalError (..))
 import Quilt.ModeSpec
-import Quilt.Substitution          (ElSubstError (..))
+import Quilt.Substitution          (QSubstError (..))
 import Quilt.Syntax
-import Quilt.TypeChecker           (ElTypingEnvironment (..),
-                                    ElTypingEnvironmentEntry (..),
-                                    ElTypingError (..),
-                                    ElTypingErrorModeOrdering (..),
-                                    ElTypingErrorTarget (..))
+import Quilt.TypeChecker           (QTypingEnvironment (..),
+                                    QTypingEnvironmentEntry (..),
+                                    QTypingError (..),
+                                    QTypingErrorModeOrdering (..),
+                                    QTypingErrorTarget (..))
 
 showDoc :: Int -> Doc () -> String
 showDoc n = renderString . layoutSmart (defaultLayoutOptions { layoutPageWidth = AvailablePerLine n 1})
@@ -30,20 +30,20 @@ showPretty n = showDoc n . pretty
 showPrettyIndent :: (Pretty a) => Int -> Int -> a -> String
 showPrettyIndent n m = showDoc n . indent m . pretty
 
-showPrettyMode :: (ElModeSpec m) => Int -> m -> String
+showPrettyMode :: (QModeSpec m) => Int -> m -> String
 showPrettyMode n = showDoc n . prettyMode
 
 showPrettyError :: (Pretty err) => Int -> Maybe Integer -> err -> String
 showPrettyError n (Just l) err = showDoc n . nest indentSize $ "Error <interactive command" <+> pretty l <> ">:" <> hardline <> hardline <> pretty err <> hardline
 showPrettyError n Nothing err = showDoc n . nest indentSize $ "Error:" <> hardline <> hardline <> pretty err <> hardline
 
-showPrettyEnv :: (ElModeSpec m) => Int -> ElEnv m -> String
+showPrettyEnv :: (QModeSpec m) => Int -> QEnv m -> String
 showPrettyEnv n env = showDoc n $ nest indentSize (hardline <> prettyEnv env)
 
-instance (ElModeSpec m) => Pretty (ElTop m) where
+instance (QModeSpec m) => Pretty (QTop m) where
   pretty = prettyTop
 
-prettyTop :: (ElModeSpec m) => ElTop m -> Doc ann
+prettyTop :: (QModeSpec m) => QTop m -> Doc ann
 prettyTop (TopTermDef x ty t)        = pretty x <+> colon <+> pretty ty <+> equals <> groupedNestOnNextLine (pretty t) <> doublesemi
 prettyTop (TopTypeDef args x m cons) = "data" <+> prettyTyArgs args <> pretty x <> prettyMode m <> prettyCons cons <> doublesemi
   where
@@ -59,22 +59,22 @@ prettyTop (TopTypeDef args x m cons) = "data" <+> prettyTyArgs args <> pretty x 
     prettyCon (c, [])  = pretty c
     prettyCon (c, tys) = pretty c <+> "of" <+> prettyProdLike 2 tys
 
-instance (ElModeSpec m) => Pretty (ElKind m) where
+instance (QModeSpec m) => Pretty (QKind m) where
   pretty = prettyKind 0
 
-prettyKind :: (ElModeSpec m) => Int -> ElKind m -> Doc ann
+prettyKind :: (QModeSpec m) => Int -> QKind m -> Doc ann
 prettyKind _ (KiType k)        = "Type" <> prettyMode k
 prettyKind p (KiUp k Empty ki) = parensIf (p > 1) $ prettyKind 2 ki <+> "Up" <> prettyMode k
 prettyKind p (KiUp k ctx ki)   = parensIf (p > 1) $ align (brackets (group (prettyContext ctx <> line <> turnstile <+> pretty ki <> line'))) <+> "Up" <> prettyMode k
 
-prettyKindAnn :: (ElModeSpec m) => Maybe (ElKind m) -> Doc ann
+prettyKindAnn :: (QModeSpec m) => Maybe (QKind m) -> Doc ann
 prettyKindAnn (Just ki) = space <> colon <+> pretty ki
 prettyKindAnn Nothing   = emptyDoc
 
-instance (ElModeSpec m) => Pretty (ElType m) where
+instance (QModeSpec m) => Pretty (QType m) where
   pretty = prettyType 0
 
-prettyType :: (ElModeSpec m) => Int -> ElType m -> Doc ann
+prettyType :: (QModeSpec m) => Int -> QType m -> Doc ann
 prettyType _ (TyVar x) = pretty x
 prettyType _ (TyInt k) = "Int" <> prettyMode k
 prettyType _ (TyBool k) = "Bool" <> prettyMode k
@@ -94,30 +94,30 @@ prettyType p (TyArr ty0 ty1) = parensIf (p > 1) . group $ prettyType 2 ty0 <> li
 prettyType p (TyForall a ki0 ty1) = parensIf (p > 1) . group $ parens (pretty a <+> colon <+> pretty ki0) <> line <> singlearrow <+> prettyType 1 ty1
 prettyType p (TyAnn ty ki) = parensIf (p > 0) . group . hang indentSize $ prettyType 1 ty <> line <> colon <+> pretty ki
 
-prettyProdLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElType m) -> Doc ann
+prettyProdLike :: (Functor t, Foldable t, QModeSpec m) => Int -> t (QType m) -> Doc ann
 prettyProdLike p = align . group . parens . vsepWith' (flatAlt "" " " <> "*") . fmap ((multilineSpace <>) . prettyType p)
 
-prettyTypeAnn :: (ElModeSpec m) => Maybe (ElType m) -> Doc ann
+prettyTypeAnn :: (QModeSpec m) => Maybe (QType m) -> Doc ann
 prettyTypeAnn (Just ty) = space <> colon <+> pretty ty
 prettyTypeAnn Nothing   = emptyDoc
 
-instance (ElModeSpec m) => Pretty (ElContextEntry m) where
+instance (QModeSpec m) => Pretty (QContextEntry m) where
   pretty = prettyContextEntry
 
-prettyContextEntry :: (ElModeSpec m) => ElContextEntry m -> Doc ann
+prettyContextEntry :: (QModeSpec m) => QContextEntry m -> Doc ann
 prettyContextEntry (CEKind ki) = pretty ki
 prettyContextEntry (CEType ty) = pretty ty
 
-prettyContext :: (ElModeSpec m) => ElContext m -> Doc ann
+prettyContext :: (QModeSpec m) => QContext m -> Doc ann
 prettyContext = group . vsepWith comma . fmap (\(x, entry) -> pretty x <> colon <> pretty entry)
 
-prettyContextHat :: ElContextHat m -> Doc ann
+prettyContextHat :: QContextHat m -> Doc ann
 prettyContextHat = group . vsepWith comma . fmap pretty
 
-instance (ElModeSpec m) => Pretty (ElTerm m) where
+instance (QModeSpec m) => Pretty (QTerm m) where
   pretty = prettyTerm 0
 
-prettyTerm :: (ElModeSpec m) => Int -> ElTerm m -> Doc ann
+prettyTerm :: (QModeSpec m) => Int -> QTerm m -> Doc ann
 prettyTerm _ (TmVar x) = pretty x
 prettyTerm _ (TmArrayTag n) = "<array@" <> pretty n <> ">"
 prettyTerm _ (TmBuiltIn bi) = pretty (fromBuiltIn bi)
@@ -205,34 +205,34 @@ prettyTerm p (TmAnn t ty) =
     , colon <+> pretty ty
     ]
 
-prettyTupleLike :: (Functor t, Foldable t, ElModeSpec m) => Int -> t (ElTerm m) -> Doc ann
+prettyTupleLike :: (Functor t, Foldable t, QModeSpec m) => Int -> t (QTerm m) -> Doc ann
 prettyTupleLike p = tupled . toList . fmap (prettyTerm p)
 
-instance (ElModeSpec m) => Pretty (ElSubstEntry m) where
+instance (QModeSpec m) => Pretty (QSubstEntry m) where
   pretty = prettySubstEntry
 
-prettySubstEntry :: (ElModeSpec m) => ElSubstEntry m -> Doc ann
+prettySubstEntry :: (QModeSpec m) => QSubstEntry m -> Doc ann
 prettySubstEntry (SEAmbi am) = pretty am
 
-prettySubst :: (ElModeSpec m) => ElSubst m -> Doc ann
+prettySubst :: (QModeSpec m) => QSubst m -> Doc ann
 prettySubst = tupled . toList . fmap pretty
 
-instance (ElModeSpec m) => Pretty (ElIContextEntry m) where
+instance (QModeSpec m) => Pretty (QIContextEntry m) where
   pretty = prettyContextEntry . fromInternal
 
-instance (ElModeSpec m) => Pretty (ElIKind m) where
+instance (QModeSpec m) => Pretty (QIKind m) where
   pretty = prettyKind 0 . fromInternal
 
-instance (ElModeSpec m) => Pretty (ElIType m) where
+instance (QModeSpec m) => Pretty (QIType m) where
   pretty = prettyType 0 . fromInternal
 
-instance (ElModeSpec m) => Pretty (ElITerm m) where
+instance (QModeSpec m) => Pretty (QITerm m) where
   pretty = prettyTerm 0 . fromInternal
 
-instance (ElModeSpec m) => Pretty (ElPattern m) where
+instance (QModeSpec m) => Pretty (QPattern m) where
   pretty = prettyPattern 0
 
-prettyPattern :: (ElModeSpec m) => Int -> ElPattern m -> Doc ann
+prettyPattern :: (QModeSpec m) => Int -> QPattern m -> Doc ann
 prettyPattern _ PatWild = underscore
 prettyPattern _ (PatVar x) = pretty x
 prettyPattern _ PatTrue = "True"
@@ -244,16 +244,16 @@ prettyPattern _ (PatData x []) = pretty x
 prettyPattern p (PatData x [t]) = parensIf (p > 0) $ pretty x <+> prettyPattern 1 t
 prettyPattern p (PatData x ts) = parensIf (p > 0) $ pretty x <+> prettyPatternTupleLike 0 ts
 
-prettyPatternTupleLike :: (ElModeSpec m) => Int -> [ElPattern m] -> Doc ann
+prettyPatternTupleLike :: (QModeSpec m) => Int -> [QPattern m] -> Doc ann
 prettyPatternTupleLike p = group . parens . vsepWith comma . fmap (prettyPattern p)
 
-instance (ElModeSpec m) => Pretty (ElIPattern m) where
+instance (QModeSpec m) => Pretty (QIPattern m) where
   pretty = prettyPattern 0 . fromInternal
 
-instance Pretty ElBinOp where
+instance Pretty QBinOp where
   pretty = prettyBinOp
 
-prettyBinOp :: ElBinOp -> Doc ann
+prettyBinOp :: QBinOp -> Doc ann
 prettyBinOp OpAdd = "+"
 prettyBinOp OpSub = "-"
 prettyBinOp OpMul = "*"
@@ -266,21 +266,21 @@ prettyBinOp OpLt  = "<"
 prettyBinOp OpGe  = ">="
 prettyBinOp OpGt  = ">"
 
-instance (ElModeSpec m) => Pretty (ElAmbi m) where
+instance (QModeSpec m) => Pretty (QAmbi m) where
   pretty = prettyAmbi 0
 
-prettyAmbi :: (ElModeSpec m) => Int -> ElAmbi m -> Doc ann
+prettyAmbi :: (QModeSpec m) => Int -> QAmbi m -> Doc ann
 prettyAmbi p (AmTerm t)  = prettyTerm p t
 prettyAmbi p (AmType ty) = prettyType p ty
 prettyAmbi p (AmCore a)  = prettyTerm p (ambiCore2term a)
 
-instance (ElModeSpec m) => Pretty (ElAmbiCore m) where
+instance (QModeSpec m) => Pretty (QAmbiCore m) where
   pretty = pretty . ambiCore2term
 
-instance (ElModeSpec m) => Pretty (ElTypingError m) where
+instance (QModeSpec m) => Pretty (QTypingError m) where
   pretty = prettyTypingError
 
-prettyTypingError :: (ElModeSpec m) => ElTypingError m -> Doc ann
+prettyTypingError :: (QModeSpec m) => QTypingError m -> Doc ann
 prettyTypingError (TESubstitutionError se) = pretty se
 prettyTypingError (TESubstitutionEntryClassMismatchForType x t _) = "Type variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "cannot be instantiated with a term, but this term is provided:" <> groupedNestOnNextLine (pretty t)
 prettyTypingError (TESubstitutionEntryClassMismatchForTerm x ty _) = "Term variable" <+> pretty x <+> "cannot be instantiated with a type, but this type is provided:" <> groupedNestOnNextLine (pretty ty)
@@ -311,7 +311,7 @@ prettyTypingError (TEInvalidTermArgForTypeLam t) = "Term" <> groupedTempNestOnNe
 prettyTypingError (TEInvalidKindAnnForLam ki ity) = "Kind" <> groupedTempNestOnNextLine (pretty ki) <> "cannot be used to annotate a value argument of type" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TEInvalidTypeAnnForTypeLam ty iki) = "Type" <> groupedTempNestOnNextLine (pretty ty) <> "cannot be used to annotate a type argument of kind" <> groupedNestOnNextLine (pretty iki)
 prettyTypingError (TEInvalidPatternForTypeLam pat) = "A type argument cannot be pattern-matched, but this pattern is provided:" <> groupedNestOnNextLine (pretty pat)
-prettyTypingError (TEInvalidBuiltIn m bi) = "A built-in primitive" <+> dquotes (pretty (fromBuiltIn bi)) <+> "cannot be used in" <+> prettyMode m
+prettyTypingError (TEInvalidBuiltIn m bi) = "A built-in primitive" <+> dquotes (pretty (fromBuiltIn bi)) <+> "is not available in" <+> prettyMode m <> "." <> line <> "If you do not have `modeEff` in your mode specification, consider to add `modeEff` to your mode specification. The function should return an unrestricted mode when passing" <+> prettyMode m <+> "in order to use mutable built-ins"
 prettyTypingError (TEInvalidTypeForArrayTag ity) = "An array must have an array type, but this type is provided" <> groupedNestOnNextLine (pretty ity)
 prettyTypingError (TECheckOnlyTermInInference t) = "The type of the term" <> groupedTempNestOnNextLine (pretty t) <> "cannot be inferred, as it is only a checkable term." <> hardline <> "Consider to provide a type annotation" <> groupedTempNestOnNextLine (parens (pretty t <> " : type")) <> "or lift it to a top-level definiltion (with a type signature)"
 prettyTypingError (TECheckOnlyTypeInInference ty) = "The kind of the type" <> groupedTempNestOnNextLine (pretty ty) <> "cannot be inferred, as it is only a checkable type." <> hardline <> "Consider to provide a kind annotation (type : kind)"
@@ -337,20 +337,20 @@ prettyTypingError (TEInternalError te) = prettyInternalTypeCheckerBug <> prettyT
 prettyTypingError (TEFor tet te) = pretty te <> hardline <> hardline <> align ("under" <+> pretty tet)
 -- prettyTypingError te = pretty $ show te
 
-prettyModeOrdering :: ElTypingErrorModeOrdering -> Doc ann
+prettyModeOrdering :: QTypingErrorModeOrdering -> Doc ann
 prettyModeOrdering TEMOGT = "greater than"
 prettyModeOrdering TEMOGE = "greater than or equal to"
 prettyModeOrdering TEMOLT = "less than"
 prettyModeOrdering TEMOLE = "less than or equal to"
 
-prettyModeSt :: ElMdSt -> Doc ann
+prettyModeSt :: QMdSt -> Doc ann
 prettyModeSt MdStWk = "weakening"
 prettyModeSt MdStCo = "contraction"
 
-prettyTypingEnvironment :: (ElModeSpec m) => ElTypingEnvironment m -> Doc ann
-prettyTypingEnvironment =  group . (<> line) . vsep . fmap prettyTypingEnvironmentItem . toList . getElTypingEnvironment
+prettyTypingEnvironment :: (QModeSpec m) => QTypingEnvironment m -> Doc ann
+prettyTypingEnvironment =  group . (<> line) . vsep . fmap prettyTypingEnvironmentItem . toList . getQTypingEnvironment
 
-prettyTypingEnvironmentItem :: (ElModeSpec m) => (ElId, m, ElTypingEnvironmentEntry m) -> Doc ann
+prettyTypingEnvironmentItem :: (QModeSpec m) => (QId, m, QTypingEnvironmentEntry m) -> Doc ann
 prettyTypingEnvironmentItem (x, _, TEETermDecl ity) = pretty x <+> colon <> groupedNestOnNextLine (pretty ity)
 prettyTypingEnvironmentItem (x, k, TEETypeDecl iargKis) = prettyArgKis iargKis <> pretty x <+> colon <> pretty (KiType k)
   where
@@ -368,10 +368,10 @@ prettyTypingEnvironmentItem (c, _, TEEConDecl _ params iargTys d) = pretty c <+>
     prettyTypeParams [param] = pretty param
     prettyTypeParams params' = align . group . (<> space) . parens . (<> line') . vsepWith' (flatAlt "" " " <> "*") $ fmap ((multilineSpace <>) . pretty) params'
 
-instance (ElModeSpec m) => Pretty (ElTypingErrorTarget m) where
+instance (QModeSpec m) => Pretty (QTypingErrorTarget m) where
   pretty = prettyTypingErrorTarget
 
-prettyTypingErrorTarget :: (ElModeSpec m) => ElTypingErrorTarget m -> Doc ann
+prettyTypingErrorTarget :: (QModeSpec m) => QTypingErrorTarget m -> Doc ann
 prettyTypingErrorTarget (TETMode k) = "mode:" <+> prettyMode k
 prettyTypingErrorTarget (TETTypeDefinition x) = "top-level type definition:" <> groupedNestOnNextLine (dquotes (pretty x))
 prettyTypingErrorTarget (TETTermDefinition x) = "top-level term definition:" <> groupedNestOnNextLine (dquotes (pretty x))
@@ -383,10 +383,10 @@ prettyTypingErrorTarget (TETSubst sub) = "substitution:" <> groupedNestOnNextLin
 prettyTypingErrorTarget (TETVariable x) = "variable:" <> groupedNestOnNextLine (dquotes (pretty x))
 prettyTypingErrorTarget (TETConstructor c) = "constructor:" <> groupedNestOnNextLine (dquotes (pretty c))
 
-instance (ElModeSpec m) => Pretty (ElEvalError m) where
+instance (QModeSpec m) => Pretty (QEvalError m) where
   pretty = prettyEvalError
 
-prettyEvalError :: (ElModeSpec m) => ElEvalError m -> Doc ann
+prettyEvalError :: (QModeSpec m) => QEvalError m -> Doc ann
 prettyEvalError (EESubstitutionError se) = pretty se
 prettyEvalError (EEVariableNotInEnv x env) = "Variable" <> groupedTempNestOnNextLine (dquotes (pretty x)) <> "is not in" <> groupedNestOnNextLine (prettyEnv env)
 prettyEvalError (EENonBoolean it) = "Non-boolean result" <> groupedTempNestOnNextLine (pretty it) <> "from the condition of an if-then-else expression"
@@ -400,17 +400,17 @@ prettyEvalError (EEInvalidCallForBuiltIn bi ispine) = "Invalid call of" <+> dquo
 prettyEvalError (EEInvalidArgumentOfBuiltIn bi ir s) = "Invalid result" <> groupedTempNestOnNextLine (pretty ir) <> "for" <+> pretty s <+> "of" <+> dquotes (pretty (fromBuiltIn bi))
 prettyEvalError (EEInvalidHeapLoc tag) = "Invalid heap address" <+> pretty tag <+> "is accessed"
 
-prettyEnv :: (ElModeSpec m) => ElEnv m -> Doc ann
-prettyEnv = group . vsepWith (flatAlt "" " ... ") . fmap prettyEnvEntry . HashMap.toList . getElEnv
+prettyEnv :: (QModeSpec m) => QEnv m -> Doc ann
+prettyEnv = group . vsepWith (flatAlt "" " ... ") . fmap prettyEnvEntry . HashMap.toList . getQEnv
 
-prettyEnvEntry :: (ElModeSpec m) => (ElId, Maybe (ElITerm m)) -> Doc ann
+prettyEnvEntry :: (QModeSpec m) => (QId, Maybe (QITerm m)) -> Doc ann
 prettyEnvEntry (x, Just t) = dquotes (pretty x) <> groupedNestOnNextLine ("|->" <+> pretty t)
 prettyEnvEntry (x, Nothing) = dquotes (pretty x) <> groupedNestOnNextLine ("|->" <+> dquotes (pretty x))
 
-instance (ElModeSpec m) => Pretty (ElSubstError m) where
+instance (QModeSpec m) => Pretty (QSubstError m) where
   pretty = prettySubstError
 
-prettySubstError :: (ElModeSpec m) => ElSubstError m -> Doc ann
+prettySubstError :: (QModeSpec m) => QSubstError m -> Doc ann
 prettySubstError (SETypeForTermVariable x ty) = prettyInternalTypeCheckerBug <> "Term variable" <+> pretty x <+> "cannot be instantiated with a type" <> groupedNestOnNextLine (pretty ty)
 prettySubstError (SETermForTypeVariable x t) = prettyInternalTypeCheckerBug <> "Type variable" <+> pretty x <+> "cannot be instantiated with a term" <> groupedNestOnNextLine (pretty t)
 
@@ -421,17 +421,17 @@ parensIf :: Bool -> Doc ann -> Doc ann
 parensIf True  d = parens d
 parensIf False d = d
 
-prettyParam :: (ElModeSpec m) => (ElPattern m, Maybe (ElContextEntry m)) -> Doc ann
+prettyParam :: (QModeSpec m) => (QPattern m, Maybe (QContextEntry m)) -> Doc ann
 prettyParam (x, Just ty) = group . parens $ pretty x <> colon <> pretty ty
 prettyParam (x, Nothing) = pretty x
 
-prettyParams :: (ElModeSpec m) => [(ElPattern m, Maybe (ElContextEntry m))] -> Doc ann
+prettyParams :: (QModeSpec m) => [(QPattern m, Maybe (QContextEntry m))] -> Doc ann
 prettyParams = vsep . fmap prettyParam
 
-prettyMode :: (ElModeSpec m) => m -> Doc ann
+prettyMode :: (QModeSpec m) => m -> Doc ann
 prettyMode = angles . fromString . showMode
 
-precedenceBinOp :: ElBinOp -> (Int, Int, Int)
+precedenceBinOp :: QBinOp -> (Int, Int, Int)
 precedenceBinOp OpAdd = (4, 4, 5)
 precedenceBinOp OpSub = (4, 4, 5)
 precedenceBinOp OpMul = (5, 5, 6)

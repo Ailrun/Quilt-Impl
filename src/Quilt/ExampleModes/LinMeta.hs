@@ -13,7 +13,7 @@ data LinMeta = MCode | MGC | MGF
 linMetaProxy :: Proxy LinMeta
 linMetaProxy = Proxy
 
-instance ElModeSpec LinMeta where
+instance QModeSpec LinMeta where
   showMode MCode = "C"
   showMode MGC   = "GC"
   showMode MGF   = "GF"
@@ -23,10 +23,10 @@ instance ElModeSpec LinMeta where
   readModeEither "GF" = Right MGF
   readModeEither _    = Left "Should be either <C>, <GC>, or <GF>"
 
-  MGC <=!! MCode = True
-  MGF <=!! MCode = True
-  MGF <=!! MGC   = True
-  m   <=!! n     = m == n
+  MCode >=!! MGC = True
+  MCode >=!! MGF = True
+  MGC   >=!! MGF = True
+  m     >=!! n   = m == n
 
   modeSig MGF _ = False
   modeSig _   _ = True

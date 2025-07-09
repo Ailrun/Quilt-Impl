@@ -2,34 +2,34 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies      #-}
 module Quilt.Syntax
-  ( ElId
-  , elId
-  , decorateElId
-  , isDecoratedElId
-  , dropDecorationFromElId
+  ( QId
+  , qId
+  , decorateQId
+  , isDecoratedQId
+  , dropDecorationFromQId
 
-  , ElModuleId(..)
+  , QModuleId(..)
 
-  , ElModule(..)
-  , ElIModule(..)
+  , QModule(..)
+  , QIModule(..)
 
-  , ElCommand(..)
+  , QCommand(..)
 
-  , ElTop(..)
-  , ElITop(..)
+  , QTop(..)
+  , QITop(..)
 
-  , ElKind(..)
-  , ElIKind(..)
-  , ElType(..)
-  , ElIType(..)
+  , QKind(..)
+  , QIKind(..)
+  , QType(..)
+  , QIType(..)
 
-  , ElContextEntry(..)
-  , ElIContextEntry(..)
-  , ElContext
-  , ElIContext
-  , ElIDomain
-  , ElContextHat
-  , ElIContextHat
+  , QContextEntry(..)
+  , QIContextEntry(..)
+  , QContext
+  , QIContext
+  , QIDomain
+  , QContextHat
+  , QIContextHat
 
   , putHat
   , putIHat
@@ -37,25 +37,25 @@ module Quilt.Syntax
   , icontext2idomain
   , icontextHat2idomain
 
-  , ElBuiltIn(..)
-  , ElTerm(..)
-  , ElITerm(..)
+  , QBuiltIn(..)
+  , QTerm(..)
+  , QITerm(..)
 
-  , ElBranch
-  , ElIBranch
-  , ElPattern(..)
-  , ElIPattern(..)
+  , QBranch
+  , QIBranch
+  , QPattern(..)
+  , QIPattern(..)
 
-  , ElBinOp(..)
-  , elBinOpType
+  , QBinOp(..)
+  , qBinOpType
 
-  , ElSubst
-  , ElISubst
-  , ElSubstEntry(..)
-  , ElISubstEntry(..)
+  , QSubst
+  , QISubst
+  , QSubstEntry(..)
+  , QISubstEntry(..)
 
-  , ElAmbi(..)
-  , ElAmbiCore(..)
+  , QAmbi(..)
+  , QAmbiCore(..)
   , ambiCore2term
   , ambiCore2type
 
@@ -79,222 +79,222 @@ import Data.Text        qualified as Text
 import Data.Tuple.Extra (fst3)
 import Prettyprinter    (Pretty)
 
-import Quilt.ModeSpec   (ElModeSpec (modeEff))
+import Quilt.ModeSpec   (QModeSpec (modeEff))
 
-newtype ElId = ElId Text
+newtype QId = QId Text
   deriving (Hashable, Eq, Ord, Show, Semigroup, IsString, Pretty) via Text
 
-elId :: Text -> ElId
-elId = ElId
+qId :: Text -> QId
+qId = QId
 
-decorateElId :: ElId -> String -> ElId
-decorateElId (ElId x) s = ElId $ x <> "~" <> fromString s
+decorateQId :: QId -> String -> QId
+decorateQId (QId x) s = QId $ x <> "~" <> fromString s
 
-isDecoratedElId :: ElId -> Bool
-isDecoratedElId (ElId x) = "~" `Text.isInfixOf` x
+isDecoratedQId :: QId -> Bool
+isDecoratedQId (QId x) = "~" `Text.isInfixOf` x
 
-dropDecorationFromElId :: ElId -> ElId
-dropDecorationFromElId (ElId x) = ElId . Text.dropEnd 1 $ Text.dropWhileEnd (/= '~') x
+dropDecorationFromQId :: QId -> QId
+dropDecorationFromQId (QId x) = QId . Text.dropEnd 1 $ Text.dropWhileEnd (/= '~') x
 
-newtype ElModuleId = ElModuleId [ElId]
-  deriving (Eq, Ord, Show) via [ElId]
+newtype QModuleId = QModuleId [QId]
+  deriving (Eq, Ord, Show) via [QId]
 
-data ElModule m = ElModule [ElModuleId] [ElTop m]
+data QModule m = QModule [QModuleId] [QTop m]
   deriving stock (Eq, Ord, Show)
 
-data ElIModule m = ElIModule [ElModuleId] [ElITop m]
+data QIModule m = QIModule [QModuleId] [QITop m]
   deriving stock (Eq, Ord, Show)
 
-data ElCommand m
-  = ComTop (ElTop m)
-  | ComTerm (ElTerm m)
+data QCommand m
+  = ComTop (QTop m)
+  | ComTerm (QTerm m)
   deriving stock (Eq, Ord, Show)
 
-data ElTop m
-  = TopTermDef ElId (ElType m) (ElTerm m)
-  | TopTypeDef [(ElId, Maybe (ElKind m))] ElId m [(ElId, [ElType m])]
+data QTop m
+  = TopTermDef QId (QType m) (QTerm m)
+  | TopTypeDef [(QId, Maybe (QKind m))] QId m [(QId, [QType m])]
   deriving stock (Eq, Ord, Show)
 
-data ElITop m
-  = ITopTermDef ElId m (ElIType m) (ElITerm m)
-  | ITopTypeDef [(ElId, ElIKind m)] ElId m [(ElId, [ElIType m])]
+data QITop m
+  = ITopTermDef QId m (QIType m) (QITerm m)
+  | ITopTypeDef [(QId, QIKind m)] QId m [(QId, [QIType m])]
   deriving stock (Eq, Ord, Show)
 
-data ElKind m
+data QKind m
   = KiType m
   -- | "m" is the mode of the entire kind
-  | KiUp m (ElContext m) (ElKind m)
+  | KiUp m (QContext m) (QKind m)
   deriving stock (Eq, Ord, Show)
 
-data ElIKind m
+data QIKind m
   = IKiType m
   -- | "m" is the mode of the entire kind
-  | IKiUp m (ElIContext m) (ElIKind m)
+  | IKiUp m (QIContext m) (QIKind m)
   deriving stock (Eq, Ord, Show)
 
-data ElType m
-  = TyVar ElId
-  | TySusp (ElContextHat m) (ElType m)
-  | TyForce (ElType m) (ElSubst m)
-  | TyData [ElType m] ElId
+data QType m
+  = TyVar QId
+  | TySusp (QContextHat m) (QType m)
+  | TyForce (QType m) (QSubst m)
+  | TyData [QType m] QId
   | TyBool m
   | TyInt m
-  | TyProd [ElType m]
-  | TyArray (ElType m)
+  | TyProd [QType m]
+  | TyArray (QType m)
   -- | "m" is the mode of the entire type
-  | TyUp m (ElContext m) (ElType m)
+  | TyUp m (QContext m) (QType m)
   -- | "m" is the mode of the entire type
-  | TyDown m (ElType m)
-  | TyArr (ElType m) (ElType m)
-  | TyForall ElId (ElKind m) (ElType m)
-  | TyAnn (ElType m) (ElKind m)
+  | TyDown m (QType m)
+  | TyArr (QType m) (QType m)
+  | TyForall QId (QKind m) (QType m)
+  | TyAnn (QType m) (QKind m)
   deriving stock (Eq, Ord, Show)
 
-data ElIType m
-  = ITyVar ElId
+data QIType m
+  = ITyVar QId
   -- | "m" is the mode of the entire type
-  | ITySusp m (ElIContextHat m) (ElIType m)
+  | ITySusp m (QIContextHat m) (QIType m)
   -- | "m" is the mode of the inner type
-  | ITyForce m (ElIType m) (ElISubst m)
-  | ITyData [ElIType m] ElId
+  | ITyForce m (QIType m) (QISubst m)
+  | ITyData [QIType m] QId
   | ITyBool m
   | ITyInt m
-  | ITyProd [ElIType m]
-  | ITyArray m (ElIType m)
+  | ITyProd [QIType m]
+  | ITyArray m (QIType m)
   -- | The first "m" is the mode of the entire type
   -- and the second "m" is the mode of the inner type
-  | ITyUp m m (ElIContext m) (ElIType m)
+  | ITyUp m m (QIContext m) (QIType m)
   -- | The first "m" is the mode of the entire type
   -- and the second "m" is the mode of the inner type
-  | ITyDown m m (ElIType m)
-  | ITyArr (ElIType m) (ElIType m)
-  | ITyForall ElId (ElIKind m) (ElIType m)
+  | ITyDown m m (QIType m)
+  | ITyArr (QIType m) (QIType m)
+  | ITyForall QId (QIKind m) (QIType m)
   deriving stock (Eq, Ord, Show)
 
-data ElContextEntry m
-  = CEKind (ElKind m)
-  | CEType (ElType m)
+data QContextEntry m
+  = CEKind (QKind m)
+  | CEType (QType m)
   deriving stock (Eq, Ord, Show)
 
-data ElIContextEntry m
-  = ICEKind (ElIKind m)
-  | ICEType (ElIType m)
+data QIContextEntry m
+  = ICEKind (QIKind m)
+  | ICEType (QIType m)
   deriving stock (Eq, Ord, Show)
 
-type ElContext m = Seq (ElId, ElContextEntry m)
-type ElIContext m = Seq (ElId, m, ElIContextEntry m)
-type ElIDomain m = Seq (ElId, Bool)
+type QContext m = Seq (QId, QContextEntry m)
+type QIContext m = Seq (QId, m, QIContextEntry m)
+type QIDomain m = Seq (QId, Bool)
 
-type ElContextHat m = Seq ElId
-type ElIContextHat m = Seq (ElId, m, Bool)
+type QContextHat m = Seq QId
+type QIContextHat m = Seq (QId, m, Bool)
 
-putHat :: ElContext m -> ElContextHat m
+putHat :: QContext m -> QContextHat m
 putHat = fmap fst
 
-putIHat :: ElIContext m -> ElIContextHat m
+putIHat :: QIContext m -> QIContextHat m
 putIHat = fmap (\(x, m, ce) -> (x, m, isCEKind ce))
 
-isCEKind :: ElIContextEntry m -> Bool
+isCEKind :: QIContextEntry m -> Bool
 isCEKind (ICEKind _) = True
 isCEKind (ICEType _) = False
 
-icontext2idomain :: ElIContext m -> ElIDomain m
+icontext2idomain :: QIContext m -> QIDomain m
 icontext2idomain = fmap (\(x, _, ce) -> (x, isCEKind ce))
 
-icontextHat2idomain :: ElIContextHat m -> ElIDomain m
+icontextHat2idomain :: QIContextHat m -> QIDomain m
 icontextHat2idomain = fmap (\(x, _, isKi) -> (x, isKi))
 
-data ElBuiltIn
+data QBuiltIn
   = BIWithAlloc
   | BIWrite
   | BIRead
   deriving stock (Eq, Ord, Show)
 
-data ElTerm m
-  = TmVar ElId
+data QTerm m
+  = TmVar QId
   | TmArrayTag Integer
-  | TmBuiltIn ElBuiltIn
-  | TmData ElId [ElTerm m]
+  | TmBuiltIn QBuiltIn
+  | TmData QId [QTerm m]
   | TmTrue
   | TmFalse
   -- | If-then-else
-  | TmIte (ElTerm m) (ElTerm m) (ElTerm m)
+  | TmIte (QTerm m) (QTerm m) (QTerm m)
   | TmInt Integer
-  | TmBinOp ElBinOp (ElTerm m) (ElTerm m)
-  | TmTuple [ElTerm m]
-  | TmMatch (ElTerm m) (Maybe (ElType m)) [ElBranch m]
-  | TmSusp (ElContextHat m) (ElTerm m)
-  | TmForce (ElTerm m) (ElSubst m)
-  | TmStore (ElTerm m)
-  | TmAmbiLam (ElPattern m) (Maybe (ElContextEntry m)) (ElTerm m)
-  | TmAmbiApp (ElTerm m) (ElAmbi m)
-  | TmAnn (ElTerm m) (ElType m)
+  | TmBinOp QBinOp (QTerm m) (QTerm m)
+  | TmTuple [QTerm m]
+  | TmMatch (QTerm m) (Maybe (QType m)) [QBranch m]
+  | TmSusp (QContextHat m) (QTerm m)
+  | TmForce (QTerm m) (QSubst m)
+  | TmStore (QTerm m)
+  | TmAmbiLam (QPattern m) (Maybe (QContextEntry m)) (QTerm m)
+  | TmAmbiApp (QTerm m) (QAmbi m)
+  | TmAnn (QTerm m) (QType m)
   deriving stock (Eq, Ord, Show)
 
-data ElITerm m
-  = ITmVar ElId
+data QITerm m
+  = ITmVar QId
   | ITmArrayTag Integer
-  | ITmBuiltIn ElBuiltIn
-  | ITmData ElId Int [ElITerm m]
+  | ITmBuiltIn QBuiltIn
+  | ITmData QId Int [QITerm m]
   | ITmTrue
   | ITmFalse
   -- | If-then-else
-  | ITmIte (ElITerm m) (ElITerm m) (ElITerm m)
+  | ITmIte (QITerm m) (QITerm m) (QITerm m)
   | ITmInt Integer
-  | ITmBinOp ElBinOp (ElITerm m) (ElITerm m)
-  | ITmTuple [ElITerm m]
+  | ITmBinOp QBinOp (QITerm m) (QITerm m)
+  | ITmTuple [QITerm m]
   -- | "m" is the mode of the scrutinee
-  | ITmMatch m (ElITerm m) (ElIType m) [ElIBranch m]
+  | ITmMatch m (QITerm m) (QIType m) [QIBranch m]
   -- | "m" is the mode of the entire exp
-  | ITmSusp m (ElIContextHat m) (ElITerm m)
+  | ITmSusp m (QIContextHat m) (QITerm m)
   -- | "m" is the mode of the inner exp
-  | ITmForce m (ElITerm m) (ElISubst m)
+  | ITmForce m (QITerm m) (QISubst m)
   -- | "m" is the mode of the inner exp
-  | ITmStore m (ElITerm m)
-  | ITmLam (ElIPattern m) (ElIType m) (ElITerm m)
-  | ITmTLam ElId (ElIKind m) (ElITerm m)
-  | ITmApp (ElITerm m) (ElITerm m)
-  | ITmTApp (ElITerm m) (ElIType m)
+  | ITmStore m (QITerm m)
+  | ITmLam (QIPattern m) (QIType m) (QITerm m)
+  | ITmTLam QId (QIKind m) (QITerm m)
+  | ITmApp (QITerm m) (QITerm m)
+  | ITmTApp (QITerm m) (QIType m)
   deriving stock (Eq, Ord, Show)
 
-type ElBranch m = (ElPattern m, ElTerm m)
-type ElIBranch m = (ElIPattern m, ElITerm m)
+type QBranch m = (QPattern m, QTerm m)
+type QIBranch m = (QIPattern m, QITerm m)
 
-data ElPattern m
+data QPattern m
   = PatWild
-  | PatVar ElId
+  | PatVar QId
   | PatTrue
   | PatFalse
   | PatInt Integer
-  | PatTuple [ElPattern m]
-  | PatLoad (ElPattern m)
-  | PatData ElId [ElPattern m]
+  | PatTuple [QPattern m]
+  | PatLoad (QPattern m)
+  | PatData QId [QPattern m]
   deriving stock (Eq, Ord, Show)
 
-data ElIPattern m
+data QIPattern m
   = IPatWild
-  | IPatVar ElId
+  | IPatVar QId
   | IPatTrue
   | IPatFalse
   | IPatInt Integer
-  | IPatTuple [ElIPattern m]
-  | IPatLoad (ElIPattern m)
-  | IPatData ElId Int [ElIPattern m]
+  | IPatTuple [QIPattern m]
+  | IPatLoad (QIPattern m)
+  | IPatData QId Int [QIPattern m]
   deriving stock (Eq, Ord, Show)
 
-newtype ElSubstEntry m
-  = SEAmbi (ElAmbi m)
+newtype QSubstEntry m
+  = SEAmbi (QAmbi m)
   deriving stock (Eq, Ord, Show)
 
-data ElISubstEntry m
-  = ISEType (ElIType m)
-  | ISETerm (ElITerm m)
+data QISubstEntry m
+  = ISEType (QIType m)
+  | ISETerm (QITerm m)
   deriving stock (Eq, Ord, Show)
 
-type ElSubst m = Seq (ElSubstEntry m)
-type ElISubst m = Seq (ElISubstEntry m)
+type QSubst m = Seq (QSubstEntry m)
+type QISubst m = Seq (QISubstEntry m)
 
-data ElBinOp
+data QBinOp
   = OpAdd
   | OpSub
   | OpMul
@@ -308,37 +308,37 @@ data ElBinOp
   | OpGt
   deriving stock (Eq, Ord, Show)
 
-elBinOpType :: m -> ElBinOp -> (ElIType m, ElIType m, ElIType m)
-elBinOpType k OpAdd = (ITyInt k, ITyInt k, ITyInt k)
-elBinOpType k OpSub = (ITyInt k, ITyInt k, ITyInt k)
-elBinOpType k OpMul = (ITyInt k, ITyInt k, ITyInt k)
-elBinOpType k OpDiv = (ITyInt k, ITyInt k, ITyInt k)
-elBinOpType k OpMod = (ITyInt k, ITyInt k, ITyInt k)
-elBinOpType k OpEq  = (ITyInt k, ITyInt k, ITyBool k)
-elBinOpType k OpNe  = (ITyInt k, ITyInt k, ITyBool k)
-elBinOpType k OpLe  = (ITyInt k, ITyInt k, ITyBool k)
-elBinOpType k OpLt  = (ITyInt k, ITyInt k, ITyBool k)
-elBinOpType k OpGe  = (ITyInt k, ITyInt k, ITyBool k)
-elBinOpType k OpGt  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType :: m -> QBinOp -> (QIType m, QIType m, QIType m)
+qBinOpType k OpAdd = (ITyInt k, ITyInt k, ITyInt k)
+qBinOpType k OpSub = (ITyInt k, ITyInt k, ITyInt k)
+qBinOpType k OpMul = (ITyInt k, ITyInt k, ITyInt k)
+qBinOpType k OpDiv = (ITyInt k, ITyInt k, ITyInt k)
+qBinOpType k OpMod = (ITyInt k, ITyInt k, ITyInt k)
+qBinOpType k OpEq  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType k OpNe  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType k OpLe  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType k OpLt  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType k OpGe  = (ITyInt k, ITyInt k, ITyBool k)
+qBinOpType k OpGt  = (ITyInt k, ITyInt k, ITyBool k)
 
-data ElAmbi m
-  = AmCore (ElAmbiCore m)
-  | AmTerm (ElTerm m)
-  | AmType (ElType m)
+data QAmbi m
+  = AmCore (QAmbiCore m)
+  | AmTerm (QTerm m)
+  | AmType (QType m)
   deriving stock (Eq, Ord, Show)
 
-data ElAmbiCore m
-  = AmVar ElId
-  | AmSusp (ElContextHat m) (ElAmbiCore m)
-  | AmForce (ElAmbiCore m) (ElSubst m)
+data QAmbiCore m
+  = AmVar QId
+  | AmSusp (QContextHat m) (QAmbiCore m)
+  | AmForce (QAmbiCore m) (QSubst m)
   deriving stock (Eq, Ord, Show)
 
-ambiCore2term :: ElAmbiCore m -> ElTerm m
+ambiCore2term :: QAmbiCore m -> QTerm m
 ambiCore2term (AmVar x)       = TmVar x
 ambiCore2term (AmSusp ctxh a) = TmSusp ctxh (ambiCore2term a)
 ambiCore2term (AmForce a sub) = TmForce (ambiCore2term a) sub
 
-ambiCore2type :: ElAmbiCore m -> ElType m
+ambiCore2type :: QAmbiCore m -> QType m
 ambiCore2type (AmVar x)       = TyVar x
 ambiCore2type (AmSusp ctxh a) = TySusp ctxh (ambiCore2type a)
 ambiCore2type (AmForce a sub) = TyForce (ambiCore2type a) sub
@@ -347,36 +347,36 @@ class FromInternal a where
   type Internal a
   fromInternal :: Internal a -> a
 
-instance FromInternal (ElModule m) where
-  type Internal (ElModule m) = ElIModule m
-  fromInternal (ElIModule imports tops) = ElModule imports (fromInternal <$> tops)
+instance FromInternal (QModule m) where
+  type Internal (QModule m) = QIModule m
+  fromInternal (QIModule imports tops) = QModule imports (fromInternal <$> tops)
 
-instance FromInternal (ElTop m) where
-  type Internal (ElTop m) = ElITop m
+instance FromInternal (QTop m) where
+  type Internal (QTop m) = QITop m
   fromInternal (ITopTermDef x _ ty t) = TopTermDef x (fromInternal ty) (fromInternal t)
   fromInternal (ITopTypeDef ys x k cons) = TopTypeDef (fmap (Just . fromInternal) <$> ys) x k (fmap (fmap (fmap fromInternal)) cons)
 
-icontext2context :: ElIContext m -> ElContext m
+icontext2context :: QIContext m -> QContext m
 icontext2context = fmap (\(x, _, entry) -> (x, fromInternal entry))
 
-icontextHat2contextHat :: ElIContextHat m -> ElContextHat m
+icontextHat2contextHat :: QIContextHat m -> QContextHat m
 icontextHat2contextHat = fmap fst3
 
-instance FromInternal (ElKind m) where
-  type Internal (ElKind m) = ElIKind m
+instance FromInternal (QKind m) where
+  type Internal (QKind m) = QIKind m
   fromInternal (IKiType k) = KiType k
   fromInternal (IKiUp k ictx iki) = KiUp k (icontext2context ictx) (fromInternal iki)
 
-instance FromInternal (ElSubstEntry m) where
-  type Internal (ElSubstEntry m) = ElISubstEntry m
+instance FromInternal (QSubstEntry m) where
+  type Internal (QSubstEntry m) = QISubstEntry m
   fromInternal (ISEType ity) = SEAmbi (AmType (fromInternal ity))
   fromInternal (ISETerm itm) = SEAmbi (AmTerm (fromInternal itm))
 
-isubst2subst :: ElISubst m -> ElSubst m
+isubst2subst :: QISubst m -> QSubst m
 isubst2subst = fmap fromInternal
 
-instance FromInternal (ElType m) where
-  type Internal (ElType m) = ElIType m
+instance FromInternal (QType m) where
+  type Internal (QType m) = QIType m
   fromInternal (ITyVar x) = TyVar x
   fromInternal (ITySusp _ ihctx ity) = TySusp (icontextHat2contextHat ihctx) (fromInternal ity)
   fromInternal (ITyForce _ ity isub) = TyForce (fromInternal ity) (isubst2subst isub)
@@ -390,13 +390,13 @@ instance FromInternal (ElType m) where
   fromInternal (ITyArr ity0 ity1) = TyArr (fromInternal ity0) (fromInternal ity1)
   fromInternal (ITyForall x iki ity) = TyForall x (fromInternal iki) (fromInternal ity)
 
-instance FromInternal (ElContextEntry m) where
-  type Internal (ElContextEntry m) = ElIContextEntry m
+instance FromInternal (QContextEntry m) where
+  type Internal (QContextEntry m) = QIContextEntry m
   fromInternal (ICEKind iki) = CEKind (fromInternal iki)
   fromInternal (ICEType ity) = CEType (fromInternal ity)
 
-instance FromInternal (ElTerm m) where
-  type Internal (ElTerm m) = ElITerm m
+instance FromInternal (QTerm m) where
+  type Internal (QTerm m) = QITerm m
   fromInternal (ITmVar x) = TmVar x
   fromInternal (ITmArrayTag n) = TmArrayTag n
   fromInternal (ITmBuiltIn x) = TmBuiltIn x
@@ -416,8 +416,8 @@ instance FromInternal (ElTerm m) where
   fromInternal (ITmApp it0 it1) = TmAmbiApp (fromInternal it0) (AmTerm (fromInternal it1))
   fromInternal (ITmTApp it0 ity1) = TmAmbiApp (fromInternal it0) (AmType (fromInternal ity1))
 
-instance FromInternal (ElPattern m) where
-  type Internal (ElPattern m) = ElIPattern m
+instance FromInternal (QPattern m) where
+  type Internal (QPattern m) = QIPattern m
   fromInternal IPatWild            = PatWild
   fromInternal (IPatVar x)         = PatVar x
   fromInternal IPatTrue            = PatTrue
@@ -427,18 +427,18 @@ instance FromInternal (ElPattern m) where
   fromInternal (IPatLoad pat)      = PatLoad (fromInternal pat)
   fromInternal (IPatData c _ pats) = PatData c (fromInternal <$> pats)
 
-toBuiltIn :: ElId -> Maybe ElBuiltIn
+toBuiltIn :: QId -> Maybe QBuiltIn
 toBuiltIn "withAlloc" = Just BIWithAlloc
 toBuiltIn "write"     = Just BIWrite
 toBuiltIn "read"      = Just BIRead
 toBuiltIn _           = Nothing
 
-fromBuiltIn :: ElBuiltIn -> ElId
+fromBuiltIn :: QBuiltIn -> QId
 fromBuiltIn BIWithAlloc = "withAlloc"
 fromBuiltIn BIWrite     = "write"
 fromBuiltIn BIRead      = "read"
 
-typeOfBuiltIn :: (ElModeSpec m) => m -> ElBuiltIn -> Maybe (ElIType m)
+typeOfBuiltIn :: (QModeSpec m) => m -> QBuiltIn -> Maybe (QIType m)
 typeOfBuiltIn k BIWithAlloc = do
   h <- modeEff k
   pure

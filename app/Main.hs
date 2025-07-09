@@ -22,14 +22,14 @@ main = do
   where
     execute _          (Just "--help") = usage Nothing
     execute "--help"   _ = usage Nothing
-    execute "ModesABC" mayFp = runElTopM $ interpreterWithMayFile threeModesABCProxy mayFp defaultOptions
-    execute "ModesAAB" mayFp = runElTopM $ interpreterWithMayFile threeModesAABProxy mayFp defaultOptions
-    execute "TwoIntModes" mayFp = runElTopM $ interpreterWithMayFile twoIntModesProxy mayFp defaultOptions
-    execute "TwoModes" mayFp = runElTopM $ interpreterWithMayFile twoModesProxy mayFp defaultOptions
+    execute "ModesABC" mayFp = runQTopM $ interpreterWithMayFile threeModesABCProxy mayFp defaultOptions
+    execute "ModesAAB" mayFp = runQTopM $ interpreterWithMayFile threeModesAABProxy mayFp defaultOptions
+    execute "TwoIntModes" mayFp = runQTopM $ interpreterWithMayFile twoIntModesProxy mayFp defaultOptions
+    execute "TwoModes" mayFp = runQTopM $ interpreterWithMayFile twoModesProxy mayFp defaultOptions
     execute _ _ = usage $ Just "Invalid mode spec"
 
-defaultOptions :: ElTopOptions
-defaultOptions = ElTopOptions
+defaultOptions :: QTopOptions
+defaultOptions = QTopOptions
   { optionShowType = True
   , optionShowMode = True
   , optionShowEnv = False

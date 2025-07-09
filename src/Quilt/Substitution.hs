@@ -13,7 +13,7 @@ import Data.Tuple.Extra           (second3)
 import Quilt.ModeSpec
 import Quilt.Syntax
 
-applySubstKind :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIKind m -> ElSubstM m (ElIKind m)
+applySubstKind :: (QModeSpec m) => QISubst m -> QIDomain m -> QIKind m -> QSubstM m (QIKind m)
 applySubstKind _   _   (IKiType m) = pure $ IKiType m
 applySubstKind sub dom (IKiUp m ctx ki) = do
   (ctx', ki') <- freshIContextInKind ctx ki
@@ -27,7 +27,7 @@ applySubstKind sub dom (IKiUp m ctx ki) = do
 -- the result assuming that input type (and substitution entries containing
 -- types) is already normal.
 
-applySubstType :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIType m -> ElSubstM m (ElIType m)
+applySubstType :: (QModeSpec m) => QISubst m -> QIDomain m -> QIType m -> QSubstM m (QIType m)
 applySubstType sub dom (ITyVar x) =
   case lookupFromIsubIdomain sub dom x of
     Just (ISEType ty) -> pure ty
@@ -67,14 +67,14 @@ applySubstType sub dom (ITyForall x ki0 ty1) = do
     (applySubstKind sub dom ki0)
     (applySubstType sub dom ty1')
 
-applySubstCtx :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIContext m -> ElSubstM m (ElIContext m)
+applySubstCtx :: (QModeSpec m) => QISubst m -> QIDomain m -> QIContext m -> QSubstM m (QIContext m)
 applySubstCtx sub dom = traverse (\(x, m, ce) -> (x, m,) <$> applySubstCtxEntry sub dom ce)
 
-applySubstCtxEntry :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIContextEntry m -> ElSubstM m (ElIContextEntry m)
+applySubstCtxEntry :: (QModeSpec m) => QISubst m -> QIDomain m -> QIContextEntry m -> QSubstM m (QIContextEntry m)
 applySubstCtxEntry sub dom (ICEKind ki) = ICEKind <$> applySubstKind sub dom ki
 applySubstCtxEntry sub dom (ICEType ty) = ICEType <$> applySubstType sub dom ty
 
-applySubstTerm :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElITerm m -> ElSubstM m (ElITerm m)
+applySubstTerm :: (QModeSpec m) => QISubst m -> QIDomain m -> QITerm m -> QSubstM m (QITerm m)
 applySubstTerm sub dom (ITmVar x)            =
   case lookupFromIsubIdomain sub dom x of
     Just (ISETerm t)  -> pure t
@@ -136,15 +136,15 @@ applySubstTerm sub dom (ITmTApp t0 ty1)      =
     (applySubstTerm sub dom t0)
     (applySubstType sub dom ty1)
 
-applySubstBranch :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElIBranch m -> ElSubstM m (ElIBranch m)
+applySubstBranch :: (QModeSpec m) => QISubst m -> QIDomain m -> QIBranch m -> QSubstM m (QIBranch m)
 applySubstBranch sub dom (pat, b) = do
   (_, pat', b') <- freshPattern pat b
   (pat',) <$> applySubstTerm sub dom b'
 
-applySubstSubst :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElISubst m -> ElSubstM m (ElISubst m)
+applySubstSubst :: (QModeSpec m) => QISubst m -> QIDomain m -> QISubst m -> QSubstM m (QISubst m)
 applySubstSubst sub dom = traverse (applySubstSubstEntry sub dom)
 
-applySubstSubstEntry :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElISubstEntry m -> ElSubstM m (ElISubstEntry m)
+applySubstSubstEntry :: (QModeSpec m) => QISubst m -> QIDomain m -> QISubstEntry m -> QSubstM m (QISubstEntry m)
 applySubstSubstEntry sub dom (ISEType ty) = ISEType <$> applySubstType sub dom ty
 applySubstSubstEntry sub dom (ISETerm t)  = ISETerm <$> applySubstTerm sub dom t
 
@@ -152,7 +152,7 @@ applySubstSubstEntry sub dom (ISETerm t)  = ISETerm <$> applySubstTerm sub dom t
 -- Fresh Variable Generation
 ------------------------------------------------------------
 
-freshPattern :: (ElModeSpec m) => ElIPattern m -> ElITerm m -> ElSubstM m (Seq ElId, ElIPattern m, ElITerm m)
+freshPattern :: (QModeSpec m) => QIPattern m -> QITerm m -> QSubstM m (Seq QId, QIPattern m, QITerm m)
 freshPattern (IPatVar x)          b = do
   (x', b') <- freshTmVarInTerm x b
   pure (Seq.singleton x', IPatVar x', b')
@@ -161,78 +161,78 @@ freshPattern (IPatLoad pat)       b = second3 IPatLoad <$> freshPattern pat b
 freshPattern (IPatData c cn pats) b = (\(b', patEnvs') -> let (pats', envs') = unzip patEnvs' in (mconcat envs', IPatData c cn pats', b')) <$> mapAccumM (\b' pat -> (\(env'', pat', b'') -> (b'', (pat', env''))) <$> freshPattern pat b') b pats
 freshPattern pat                  b = pure (Seq.empty, pat, b)
 
-freshTmVarInTerm :: (ElModeSpec m) => ElId -> ElITerm m -> ElSubstM m (ElId, ElITerm m)
+freshTmVarInTerm :: (QModeSpec m) => QId -> QITerm m -> QSubstM m (QId, QITerm m)
 freshTmVarInTerm x t = do
   x' <- freshOf x
   (x',) <$> applySubstTerm (Seq.singleton (ISETerm (ITmVar x'))) (Seq.singleton (x, False)) t
 
-freshTmVarsInTerm :: (ElModeSpec m) => [ElId] -> ElITerm m -> ElSubstM m ([ElId], ElITerm m)
+freshTmVarsInTerm :: (QModeSpec m) => [QId] -> QITerm m -> QSubstM m ([QId], QITerm m)
 freshTmVarsInTerm xs t = swap <$> mapAccumM ((fmap swap .) . flip freshTmVarInTerm) t xs
 
-freshTyVarInTerm :: (ElModeSpec m) => ElId -> ElITerm m -> ElSubstM m (ElId, ElITerm m)
+freshTyVarInTerm :: (QModeSpec m) => QId -> QITerm m -> QSubstM m (QId, QITerm m)
 freshTyVarInTerm x t = do
   x' <- freshOf x
   (x',) <$> applySubstTerm (Seq.singleton (ISEType (ITyVar x'))) (Seq.singleton (x, True)) t
 
-freshIContextHatInTerm :: (ElModeSpec m) => ElIContextHat m -> ElITerm m -> ElSubstM m (ElIContextHat m, ElITerm m)
+freshIContextHatInTerm :: (QModeSpec m) => QIContextHat m -> QITerm m -> QSubstM m (QIContextHat m, QITerm m)
 freshIContextHatInTerm ctxh t = swap <$> mapAccumM helper t ctxh
   where
     helper t' (x', m', True)  = fmap (, m', True) . swap <$> freshTyVarInTerm x' t'
     helper t' (x', m', False) = fmap (, m', False) . swap <$> freshTmVarInTerm x' t'
 
-freshTmVarInType :: (ElModeSpec m) => ElId -> ElIType m -> ElSubstM m (ElId, ElIType m)
+freshTmVarInType :: (QModeSpec m) => QId -> QIType m -> QSubstM m (QId, QIType m)
 freshTmVarInType x ty = do
   x' <- freshOf x
   (x',) <$> applySubstType (Seq.singleton (ISETerm (ITmVar x'))) (Seq.singleton (x, False)) ty
 
-freshTyVarInType :: (ElModeSpec m) => ElId -> ElIType m -> ElSubstM m (ElId, ElIType m)
+freshTyVarInType :: (QModeSpec m) => QId -> QIType m -> QSubstM m (QId, QIType m)
 freshTyVarInType x ty = do
   x' <- freshOf x
   (x',) <$> applySubstType (Seq.singleton (ISEType (ITyVar x'))) (Seq.singleton (x, True)) ty
 
-freshIContextInType :: (ElModeSpec m) => ElIContext m -> ElIType m -> ElSubstM m (ElIContext m, ElIType m)
+freshIContextInType :: (QModeSpec m) => QIContext m -> QIType m -> QSubstM m (QIContext m, QIType m)
 freshIContextInType ctx ty = swap <$> mapAccumM helper ty ctx
   where
     helper ty' (x', m', ce)
       | isCEKind ce = fmap (, m', ce) . swap <$> freshTyVarInType x' ty'
       | otherwise   = fmap (, m', ce) . swap <$> freshTmVarInType x' ty'
 
-freshIContextHatInType :: (ElModeSpec m) => ElIContextHat m -> ElIType m -> ElSubstM m (ElIContextHat m, ElIType m)
+freshIContextHatInType :: (QModeSpec m) => QIContextHat m -> QIType m -> QSubstM m (QIContextHat m, QIType m)
 freshIContextHatInType ctxh ty = swap <$> mapAccumM helper ty ctxh
   where
     helper ty' (x', m', True)  = fmap (, m', True) . swap <$> freshTyVarInType x' ty'
     helper ty' (x', m', False) = fmap (, m', False) . swap <$> freshTmVarInType x' ty'
 
-freshTmVarInKind :: (ElModeSpec m) => ElId -> ElIKind m -> ElSubstM m (ElId, ElIKind m)
+freshTmVarInKind :: (QModeSpec m) => QId -> QIKind m -> QSubstM m (QId, QIKind m)
 freshTmVarInKind x ki = do
   x' <- freshOf x
   (x',) <$> applySubstKind (Seq.singleton (ISETerm (ITmVar x'))) (Seq.singleton (x, False)) ki
 
-freshTyVarInKind :: (ElModeSpec m) => ElId -> ElIKind m -> ElSubstM m (ElId, ElIKind m)
+freshTyVarInKind :: (QModeSpec m) => QId -> QIKind m -> QSubstM m (QId, QIKind m)
 freshTyVarInKind x ki = do
   x' <- freshOf x
   (x',) <$> applySubstKind (Seq.singleton (ISEType (ITyVar x'))) (Seq.singleton (x, True)) ki
 
-freshIContextInKind :: (ElModeSpec m) => ElIContext m -> ElIKind m -> ElSubstM m (ElIContext m, ElIKind m)
+freshIContextInKind :: (QModeSpec m) => QIContext m -> QIKind m -> QSubstM m (QIContext m, QIKind m)
 freshIContextInKind ctx ki = swap <$> mapAccumM helper ki ctx
   where
     helper ki' (x', m', ce)
       | isCEKind ce = fmap (, m', ce) . swap <$> freshTyVarInKind x' ki'
       | otherwise   = fmap (, m', ce) . swap <$> freshTmVarInKind x' ki'
 
-freshOf :: ElId -> ElSubstM m ElId
+freshOf :: QId -> QSubstM m QId
 freshOf x
-  | isDecoratedElId x = freshOf (dropDecorationFromElId x)
+  | isDecoratedQId x = freshOf (dropDecorationFromQId x)
   | otherwise = do
     n <- get
     put (succ n)
-    pure $ decorateElId x (show n)
+    pure $ decorateQId x (show n)
 
 ------------------------------------------------------------
 -- Other Helpers
 ------------------------------------------------------------
 
-lookupFromIsubIdomain :: (ElModeSpec m) => ElISubst m -> ElIDomain m -> ElId -> Maybe (ElISubstEntry m)
+lookupFromIsubIdomain :: (QModeSpec m) => QISubst m -> QIDomain m -> QId -> Maybe (QISubstEntry m)
 lookupFromIsubIdomain isub idom x =
   case Seq.findIndexR (\(x', _) -> x == x') idom of
     Just i  ->
@@ -251,10 +251,10 @@ lookupFromIsubIdomain isub idom x =
 -- Substitution Monad
 ------------------------------------------------------------
 
-newtype ElSubstM m a = ElSubstM { runElSubstM :: ExceptT (ElSubstError m) (State Integer) a }
-  deriving newtype (Functor, Applicative, Monad, MonadError (ElSubstError m), MonadState Integer)
+newtype QSubstM m a = QSubstM { runQSubstM :: ExceptT (QSubstError m) (State Integer) a }
+  deriving newtype (Functor, Applicative, Monad, MonadError (QSubstError m), MonadState Integer)
 
-data ElSubstError m
-  = SETypeForTermVariable ElId (ElIType m)
-  | SETermForTypeVariable ElId (ElITerm m)
+data QSubstError m
+  = SETypeForTermVariable QId (QIType m)
+  | SETermForTypeVariable QId (QITerm m)
   deriving Show

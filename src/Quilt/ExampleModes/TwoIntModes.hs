@@ -13,7 +13,7 @@ data TwoIntModes = MA | MB
 twoIntModesProxy :: Proxy TwoIntModes
 twoIntModesProxy = Proxy
 
-instance ElModeSpec TwoIntModes where
+instance QModeSpec TwoIntModes where
   showMode MA = "A"
   showMode MB = "B"
 
@@ -21,9 +21,7 @@ instance ElModeSpec TwoIntModes where
   readModeEither "B" = Right MB
   readModeEither _   = Left "Should be either <A> or <B>"
 
-  MB <=!! MA = True
-  m  <=!! n  = m == n
+  MA >=!! MB = True
+  m  >=!! n  = m == n
 
   modeSig _ _ = True
-
-  modeEff _ = Nothing

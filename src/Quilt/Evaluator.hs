@@ -22,22 +22,22 @@ import Quilt.ModeSpec
 import Quilt.Substitution
 import Quilt.Syntax
 
-newtype ElEnv m = ElEnv { getElEnv :: HashMap ElId (Maybe (ElITerm m)) }
+newtype QEnv m = QEnv { getQEnv :: HashMap QId (Maybe (QITerm m)) }
   deriving stock Show
 
-newtype ElHeap m = ElHeap { getElHeap :: (Integer, HashMap Integer (Vector (ElITerm m))) }
+newtype QHeap m = QHeap { getQHeap :: (Integer, HashMap Integer (Vector (QITerm m))) }
   deriving stock Show
 
-evalUnderModule :: (ElModeSpec m) => ElIModule m -> ElITerm m -> ElEvalM m (ElITerm m)
-evalUnderModule (ElIModule _imps tops) t = do
+evalUnderModule :: (QModeSpec m) => QIModule m -> QITerm m -> QEvalM m (QITerm m)
+evalUnderModule (QIModule _imps tops) t = do
   modifyEnv (const (buildEnv tops))
   eval t
   where
-    buildEnv = ElEnv . foldl' envHelper HashMap.empty
+    buildEnv = QEnv . foldl' envHelper HashMap.empty
     envHelper envMap (ITopTermDef x _ _ t') = HashMap.insert x (Just t') envMap
     envHelper envMap ITopTypeDef{}          = envMap
 
-checkNormHead :: ElITerm m -> Bool
+checkNormHead :: QITerm m -> Bool
 checkNormHead ITmData{}     = True
 checkNormHead ITmArrayTag{} = True
 checkNormHead ITmTrue       = True
@@ -50,7 +50,7 @@ checkNormHead ITmLam{}      = True
 checkNormHead ITmTLam{}     = True
 checkNormHead _             = False
 
-eval :: (ElModeSpec m) => ElITerm m -> ElEvalM m (ElITerm m)
+eval :: (QModeSpec m) => QITerm m -> QEvalM m (QITerm m)
 eval (ITmVar x) = do
   env <- getEnv
   case envLookup x env of
@@ -130,11 +130,11 @@ eval (ITmTApp t0 ty1) = do
       | checkNormHead r0 -> throwError $ EENonTypeFunction r0 -- "Non-type-function result \"" <> show r0 <> "\" for application"
       | otherwise -> pure $ ITmTApp r0 ty1
 
-firstMatchingBranch :: (ElModeSpec m) => [ElIBranch m] -> ElITerm m -> ElEvalM m (ElITerm m)
+firstMatchingBranch :: (QModeSpec m) => [QIBranch m] -> QITerm m -> QEvalM m (QITerm m)
 firstMatchingBranch []             t = throwError $ EENoMatchingClause t
 firstMatchingBranch ((pat, b):brs) t = catchError (matching pat t b) $ \_ -> firstMatchingBranch brs t
 
-matching :: (ElModeSpec m) => ElIPattern m -> ElITerm m -> ElITerm m -> ElEvalM m (ElITerm m)
+matching :: (QModeSpec m) => QIPattern m -> QITerm m -> QITerm m -> QEvalM m (QITerm m)
 matching IPatWild             _                    b = pure b
 matching (IPatVar x)          tm                   b = do
   (x', b') <- substM2evalM (freshTmVarInTerm x b)
@@ -150,13 +150,13 @@ matching (IPatData _ cn pats) (ITmData _ cn' args) b
   | cn == cn'                                        = foldlM (\b' (pat, arg) -> matching pat arg b') b $ zip pats args
 matching pat                  t                    _ = throwError $ EESinglePatternMismatch pat t
 
-findBuiltInSpine :: ElITerm m -> Maybe (ElBuiltIn, ElISubst m)
+findBuiltInSpine :: QITerm m -> Maybe (QBuiltIn, QISubst m)
 findBuiltInSpine (ITmApp t0 t1)  = fmap (:|> ISETerm t1) <$> findBuiltInSpine t0
 findBuiltInSpine (ITmTApp t0 k1) = fmap (:|> ISEType k1) <$> findBuiltInSpine t0
 findBuiltInSpine (ITmBuiltIn bi) = pure (bi, [])
 findBuiltInSpine _               = Nothing
 
-evalBuiltIn :: (ElModeSpec m) => ElBuiltIn -> ElISubst m -> ElEvalM m (ElITerm m)
+evalBuiltIn :: (QModeSpec m) => QBuiltIn -> QISubst m -> QEvalM m (QITerm m)
 evalBuiltIn BIWithAlloc [ISEType ty0, ISEType ty1, ISETerm t0, ISETerm t1, ISETerm t2] = do
   r0 <- eval t0
   r1 <- eval t1
@@ -208,13 +208,13 @@ evalBuiltIn BIRead      [ISEType ty0, ISETerm t0, ISETerm t1]                   
       | otherwise        -> pure $ buildBuiltInSpine BIWithAlloc [ISEType ty0, ISETerm r0, ISETerm r1]
 evalBuiltIn BIRead      spine                                                          = throwError $ EEInvalidCallForBuiltIn BIRead spine
 
-buildBuiltInSpine :: ElBuiltIn -> ElISubst m -> ElITerm m
+buildBuiltInSpine :: QBuiltIn -> QISubst m -> QITerm m
 buildBuiltInSpine bi = foldl app (ITmBuiltIn bi)
   where
     app t0 (ISETerm t1)  = ITmApp t0 t1
     app t0 (ISEType ty1) = ITmTApp t0 ty1
 
-refineTemplate :: (ElModeSpec m) => m -> ElITerm m -> ElEvalM m (ElITerm m)
+refineTemplate :: (QModeSpec m) => m -> QITerm m -> QEvalM m (QITerm m)
 refineTemplate _ tm@(ITmVar _)         = pure tm
 refineTemplate _ tm@(ITmBuiltIn _)     = pure tm
 refineTemplate _ tm@(ITmArrayTag _)    = pure tm
@@ -272,12 +272,12 @@ refineTemplate n (ITmApp t0 t1)        =
     (refineTemplate n t1)
 refineTemplate n (ITmTApp t0 ty1)      = flip ITmTApp ty1 <$> refineTemplate n t0
 
-refineBranchTemplate :: (ElModeSpec m) => m -> ElIBranch m -> ElEvalM m (ElIBranch m)
+refineBranchTemplate :: (QModeSpec m) => m -> QIBranch m -> QEvalM m (QIBranch m)
 refineBranchTemplate n (pat, b) = do
   (pat', b') <- opaqueMatching pat b
   (pat',) <$> refineTemplate n b'
 
-opaqueMatching :: (ElModeSpec m) => ElIPattern m -> ElITerm m -> ElEvalM m (ElIPattern m, ElITerm m)
+opaqueMatching :: (QModeSpec m) => QIPattern m -> QITerm m -> QEvalM m (QIPattern m, QITerm m)
 opaqueMatching pat b = do
   (xs, pat', b') <- substM2evalM $ freshPattern pat b
   envExtendWithIds xs
@@ -289,7 +289,7 @@ opaqueMatching pat b = do
 -- opaqueMatching env (PatData c pats) b = (\((env', b'), pats') -> (env', PatData c pats', b')) <$> mapAccumM (\(env', b') pat -> (\(env'', pat', b'') -> ((env'', b''), pat')) <$> opaqueMatching env' pat b') (env, b) pats
 -- opaqueMatching env pat              b = pure (env, pat, b)
 
-computeBop :: ElBinOp -> Integer -> Integer -> ElITerm m
+computeBop :: QBinOp -> Integer -> Integer -> QITerm m
 computeBop OpAdd n0 n1 = ITmInt (n0 + n1)
 computeBop OpSub n0 n1
   | n0 >= n1  = ITmInt (n0 - n1)
@@ -316,72 +316,72 @@ computeBop OpGt n0 n1
   | n0 > n1   = ITmTrue
   | otherwise = ITmFalse
 
-getEnv :: ElEvalM m (ElEnv m)
+getEnv :: QEvalM m (QEnv m)
 getEnv = fst <$> get
 
-modifyEnv :: (ElEnv m -> ElEnv m) -> ElEvalM m ()
+modifyEnv :: (QEnv m -> QEnv m) -> QEvalM m ()
 modifyEnv = modify . first
 
-getHeap :: ElEvalM m (ElHeap m)
+getHeap :: QEvalM m (QHeap m)
 getHeap = snd <$> get
 
-modifyHeap :: (ElHeap m -> ElHeap m) -> ElEvalM m ()
+modifyHeap :: (QHeap m -> QHeap m) -> QEvalM m ()
 modifyHeap = modify . second
 
-heapAllocArray :: Int -> ElITerm m -> ElEvalM m Integer
+heapAllocArray :: Int -> QITerm m -> QEvalM m Integer
 heapAllocArray n a = do
-  modifyHeap (\(ElHeap (nid, h)) -> ElHeap (succ nid, HashMap.insert nid (Vector.replicate n a) h))
-  ElHeap (snid, _) <- getHeap
+  modifyHeap (\(QHeap (nid, h)) -> QHeap (succ nid, HashMap.insert nid (Vector.replicate n a) h))
+  QHeap (snid, _) <- getHeap
   pure (snid - 1)
 
-heapGetArray :: Integer -> ElEvalM m (Vector (ElITerm m))
+heapGetArray :: Integer -> QEvalM m (Vector (QITerm m))
 heapGetArray tag = do
-  ElHeap (_, h) <- getHeap
+  QHeap (_, h) <- getHeap
   case HashMap.lookup tag h of
     Just array -> pure array
     Nothing    -> throwError $ EEInvalidHeapLoc tag -- "Invalid heap location " <> show tag
 
-heapModifyArray :: Integer -> (Vector (ElITerm m) -> Vector (ElITerm m)) -> ElEvalM m ()
-heapModifyArray tag f = modifyHeap (\(ElHeap (nid, h)) -> ElHeap (nid, HashMap.adjust f tag h))
+heapModifyArray :: Integer -> (Vector (QITerm m) -> Vector (QITerm m)) -> QEvalM m ()
+heapModifyArray tag f = modifyHeap (\(QHeap (nid, h)) -> QHeap (nid, HashMap.adjust f tag h))
 
-heapDeleteArrayOf :: Integer -> ElEvalM m ()
-heapDeleteArrayOf tag = modifyHeap (\(ElHeap (nid, h)) -> ElHeap (nid, HashMap.delete tag h))
+heapDeleteArrayOf :: Integer -> QEvalM m ()
+heapDeleteArrayOf tag = modifyHeap (\(QHeap (nid, h)) -> QHeap (nid, HashMap.delete tag h))
 
-envInsert :: ElId -> ElITerm m -> ElEvalM m ()
-envInsert x t = modifyEnv (ElEnv . HashMap.insert x (Just t) . getElEnv)
+envInsert :: QId -> QITerm m -> QEvalM m ()
+envInsert x t = modifyEnv (QEnv . HashMap.insert x (Just t) . getQEnv)
 
-envEmptyInsert :: ElId -> ElEvalM m ()
-envEmptyInsert x = modifyEnv (ElEnv . HashMap.insert x Nothing . getElEnv)
+envEmptyInsert :: QId -> QEvalM m ()
+envEmptyInsert x = modifyEnv (QEnv . HashMap.insert x Nothing . getQEnv)
 
-envExtend :: ElIContextHat m -> ElEvalM m ()
+envExtend :: QIContextHat m -> QEvalM m ()
 envExtend ctxh = envExtendWithIds (fmap fst3 ctxh)
 
-envExtendWithIds :: Seq ElId -> ElEvalM m ()
-envExtendWithIds xs = modifyEnv (ElEnv . HashMap.union (HashMap.fromList . toList $ fmap (, Nothing) xs) . getElEnv)
+envExtendWithIds :: Seq QId -> QEvalM m ()
+envExtendWithIds xs = modifyEnv (QEnv . HashMap.union (HashMap.fromList . toList $ fmap (, Nothing) xs) . getQEnv)
 
-envLookup :: ElId -> ElEnv m -> Maybe (Maybe (ElITerm m))
-envLookup x = HashMap.lookup x . getElEnv
+envLookup :: QId -> QEnv m -> Maybe (Maybe (QITerm m))
+envLookup x = HashMap.lookup x . getQEnv
 
-newtype ElEvalM m a = ElEvalM { runElEvalM :: StateT (ElEnv m, ElHeap m) (ExceptT (ElEvalError m) (State Integer)) a }
-  deriving newtype (Functor, Applicative, Monad, MonadState (ElEnv m, ElHeap m), MonadError (ElEvalError m))
+newtype QEvalM m a = QEvalM { runQEvalM :: StateT (QEnv m, QHeap m) (ExceptT (QEvalError m) (State Integer)) a }
+  deriving newtype (Functor, Applicative, Monad, MonadState (QEnv m, QHeap m), MonadError (QEvalError m))
 
-substM2evalM :: ElSubstM m a -> ElEvalM m a
-substM2evalM = ElEvalM . lift . mapExceptT (fmap (first EESubstitutionError)) . runElSubstM
+substM2evalM :: QSubstM m a -> QEvalM m a
+substM2evalM = QEvalM . lift . mapExceptT (fmap (first EESubstitutionError)) . runQSubstM
 
-fullRunElEvalM :: (ElModeSpec m) => ElEvalM m a -> State Integer (Either (ElEvalError m) (a, (ElEnv m, ElHeap m)))
-fullRunElEvalM = runExceptT . flip runStateT (ElEnv HashMap.empty, ElHeap (0, HashMap.empty)) . runElEvalM
+fullRunQEvalM :: (QModeSpec m) => QEvalM m a -> State Integer (Either (QEvalError m) (a, (QEnv m, QHeap m)))
+fullRunQEvalM = runExceptT . flip runStateT (QEnv HashMap.empty, QHeap (0, HashMap.empty)) . runQEvalM
 
-data ElEvalError m
-  = EEVariableNotInEnv ElId (ElEnv m)
-  | EENonBoolean (ElITerm m)
-  | EENonInteger (ElITerm m) String
-  | EENonTemplate (ElITerm m)
-  | EENonFunction (ElITerm m)
-  | EENonTypeFunction (ElITerm m)
-  | EENoMatchingClause (ElITerm m)
-  | EESinglePatternMismatch (ElIPattern m) (ElITerm m)
-  | EEInvalidCallForBuiltIn ElBuiltIn (ElISubst m)
-  | EEInvalidArgumentOfBuiltIn ElBuiltIn (ElITerm m) String
+data QEvalError m
+  = EEVariableNotInEnv QId (QEnv m)
+  | EENonBoolean (QITerm m)
+  | EENonInteger (QITerm m) String
+  | EENonTemplate (QITerm m)
+  | EENonFunction (QITerm m)
+  | EENonTypeFunction (QITerm m)
+  | EENoMatchingClause (QITerm m)
+  | EESinglePatternMismatch (QIPattern m) (QITerm m)
+  | EEInvalidCallForBuiltIn QBuiltIn (QISubst m)
+  | EEInvalidArgumentOfBuiltIn QBuiltIn (QITerm m) String
   | EEInvalidHeapLoc Integer
-  | EESubstitutionError (ElSubstError m)
+  | EESubstitutionError (QSubstError m)
   deriving Show
