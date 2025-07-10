@@ -50,11 +50,6 @@ writeIntOption n v arr : Int<B> -o Int<B> OptionB -o Int<B> OptionB Array -o Int
   (write : (a : Type<B> Up<A>) -> Int<B> -o (force a) Up<A> Down<B> -o (force a) Array -o (force a) Array)
     (susp(Int<B> OptionB)) n (liftIntOption v) arr;;
 
-expensiveFun x : Int<A> -o Int<A> =
-  if x > 100
-  then x - 10
-  else expensiveFun (expensiveFun (x + 11));;
-
 convertTo n : Int<B> -o Int<A> Down<B> =
   match n with
   | 0 => alloc 0
@@ -76,13 +71,21 @@ foreignFunCall f n : (Int<A> -o Int<A>) Down<B> -o Int<B> -o Int<B> =
   load f_ = f in
   convertFrom (alloc (f_ nA_));;
 
+-- a mocked expensive function
+expensiveFun x : Int<A> -o Int<A> =
+  if x > 100
+  then x - 10
+  else expensiveFun (expensiveFun (x + 11));;
+
+ptrToExpensiveFun : (Int<A> -o Int<A>) Down<B> = alloc expensiveFun;;
+
 callExpensiveFun arr0 n : (Int<B> OptionB Array) -o Int<B> -o (Int<B> * Int<B> OptionB Array) =
   let (n1, n2) = dupInt n in
   let (vO, arr1) = readIntOption n1 arr0 in
   match vO with
   | NoneB =>
     let (n3, n4) = dupInt n2 in
-    let v = foreignFunCall (alloc expensiveFun) n3 in
+    let v = foreignFunCall ptrToExpensiveFun n3 in
     let (v1, v2) = dupInt v in
     let arr2 = writeIntOption n4 (SomeB v1) arr1 in
     (v2, arr2)

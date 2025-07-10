@@ -50,10 +50,10 @@ foreignFunCallA' f n : (Int<A'> -o Int<A'>) Down<B> -o Int<B> -o Int<B> =
 
 
 data a Option<B> = None | Some of a;;
-data ProblemFrag<B> = Frag1 | Frag2;;
+data Frag<B> = Frag1 | Frag2;;
 
 -- A mocked fragment decision
-decideFrag n : Int<B> -o ProblemFrag Option =
+kindOfProblem n : Int<B> -o Frag Option =
   if n < 5
   then Some Frag1
   else
@@ -61,12 +61,15 @@ decideFrag n : Int<B> -o ProblemFrag Option =
   then Some Frag2
   else None;;
 
-unionSolver n : Int<B> -o Int<B> Option =
-  match decideFrag n with
+ptrToSolver1 : (Int<A> -o Int<A>) Down<B> = alloc(solver1);;
+ptrToSolver2 : (Int<A'> -o Int<A'>) Down<B> = alloc(solver2);;
+
+dispatchSolver n : Int<B> -o Int<B> Option =
+  match kindOfProblem n with
   | Some frag =>
     match frag with
-    | Frag1 => Some (foreignFunCallA (alloc(solver1)) n)
-    | Frag2 => Some (foreignFunCallA' (alloc(solver2)) n)
+    | Frag1 => Some (foreignFunCallA ptrToSolver1 n)
+    | Frag2 => Some (foreignFunCallA' ptrToSolver2 n)
     end
   | None => None
   end;;

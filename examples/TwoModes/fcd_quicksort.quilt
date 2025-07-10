@@ -103,7 +103,7 @@ partition arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o (Int<
   let (pivot, arr1) = readB (susp Int<B>) (convertFrom (alloc hiA)) arr0 in
   partitionLoop arr1 (alloc hiA) (alloc loA) (alloc loA) pivot;;
 
-quickSort arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o Int<B> Array =
+efficientQuickSortInternal arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o Int<B> Array =
   load loA = lo in
   load hiA = hi in
   if loA >= hiA
@@ -113,8 +113,8 @@ quickSort arr0 lo hi : Int<B> Array -o Int<A> Down<B> -o Int<A> Down<B> -o Int<B
   else
     let (p, arr1) = partition arr0 (alloc loA) (alloc hiA) in
     load pA = p in
-    let arr2 = quickSort arr1 (alloc loA) (alloc (pA - 1)) in
-    quickSort arr2 (alloc (pA + 1)) (alloc hiA);;
+    let arr2 = efficientQuickSortInternal arr1 (alloc loA) (alloc (pA - 1)) in
+    efficientQuickSortInternal arr2 (alloc (pA + 1)) (alloc hiA);;
 
 data a ListB<B> = NilB | ConsB of a * a ListB;;
 
@@ -165,14 +165,14 @@ fillArrayHelper i l arr0 : Int<B> -o Int<B> ListB -o Int<B> Array -o Int<B> Arra
 fillArray l arr0 : Int<B> ListB -o Int<B> Array -o Int<B> Array =
   fillArrayHelper 0 l arr0;;
 
-quickSortListB l : Int<B> ListB -o Int<B> ListB =
+efficientQuickSort l : Int<B> ListB -o Int<B> ListB =
   let (len, l') = length l in
   let (len0, len1) = dupInt len in
   load lA =
     withAllocB (susp Int<B>) (susp (Int<B> ListB)) len0 (alloc (susp 0))
       (fun arr0 ->
         let arr1 = fillArray l' arr0 in
-        let arr2 = quickSort arr1 (alloc 0) (alloc 4) in
+        let arr2 = efficientQuickSortInternal arr1 (alloc 0) (alloc 4) in
         let (l'', arr3) = arrayToListB arr2 (len1 - 1) in
         (arr3, liftListB (susp Int<B>) l''))
   in
@@ -199,7 +199,7 @@ convertFromList l : Int<A> ListA Down<B> -o Int<B> ListB =
   end;;
 
 quickSortCode a l cb : (a : Type<A>) -> Int<A> ListA -o (Int<A> ListA -o a) -o a Down<B> Up<A> =
-  susp (load x = convertToList (quickSortListB (convertFromList (alloc l))) in alloc(cb x));;
+  susp (load x = convertToList (efficientQuickSort (convertFromList (alloc l))) in alloc(cb x));;
 
 exampleListA : Int<A> ListA = (ConsA (7, ConsA (2, (ConsA (5, ConsA (3, ConsA (6, NilA)))))));;
 
