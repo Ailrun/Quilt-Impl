@@ -1,7 +1,12 @@
+{-# LANGUAGE CPP                #-}
 {-# LANGUAGE DerivingStrategies #-}
 module Quilt.Substitution where
 
-import Control.Applicative        (Applicative (liftA2), liftA3)
+#if MIN_VERSION_base(4,18,0)
+import Control.Applicative        (liftA3)
+#else
+import Control.Applicative        (liftA2, liftA3)
+#endif
 import Control.Monad.Except       (ExceptT, MonadError (..))
 import Control.Monad.State.Strict (MonadState (..), State)
 import Data.Sequence              (Seq)

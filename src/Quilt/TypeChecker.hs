@@ -6,7 +6,9 @@
 {-# LANGUAGE ViewPatterns      #-}
 module Quilt.TypeChecker where
 
-import Control.Applicative        (Applicative (..))
+#if !MIN_VERSION_base(4,18,0)
+import Control.Applicative        (Applicative (liftA2))
+#endif
 import Control.Comonad            (Comonad (duplicate))
 import Control.Monad              (forM, forM_, unless)
 import Control.Monad.Except       (ExceptT, MonadError (..), liftEither,

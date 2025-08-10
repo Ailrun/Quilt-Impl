@@ -2,7 +2,7 @@
 
 ### Requirement
 
-- GHC 9.4.8
+- GHC 9.4.8 or 9.6.7
 - Cabal 3.8 or higher (preferably Cabal 3.14.2.0)
 
 ### Required Setting

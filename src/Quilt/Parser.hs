@@ -1,7 +1,12 @@
+{-# LANGUAGE CPP               #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Quilt.Parser where
 
+#if MIN_VERSION_base(4,18,0)
+import Control.Applicative                ((<**>))
+#else
 import Control.Applicative                (liftA2, (<**>))
+#endif
 import Control.Monad                      (void)
 import Control.Monad.Combinators.Expr     qualified as CMCE
 import Control.Monad.Combinators.NonEmpty qualified as CMCNE
